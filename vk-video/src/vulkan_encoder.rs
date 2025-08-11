@@ -310,8 +310,10 @@ pub struct VulkanEncoder<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct FullEncoderParameters {
     pub(crate) idr_period: NonZeroU32,
-    pub(crate) width: NonZeroU32,
-    pub(crate) height: NonZeroU32,
+    pub(crate) padded_width: NonZeroU32,
+    pub(crate) padded_height: NonZeroU32,
+    pub(crate) original_width: NonZeroU32,
+    pub(crate) original_height: NonZeroU32,
     pub(crate) rate_control: RateControl,
     pub(crate) max_references: NonZeroU32,
     pub(crate) profile: H264Profile,

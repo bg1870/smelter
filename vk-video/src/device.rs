@@ -435,6 +435,9 @@ impl VulkanDevice {
             });
         }
 
+        let padded_width = pad_to_16(width);
+        let padded_height = pad_to_16(height);
+
         let rate_control = encoder_parameters.rate_control;
         if !native_profile_caps
             .encode_capabilities
@@ -500,8 +503,10 @@ impl VulkanDevice {
 
         Ok(FullEncoderParameters {
             idr_period,
-            width,
-            height,
+            original_width: width,
+            original_height: height,
+            padded_width,
+            padded_height,
             rate_control,
             max_references,
             quality_level: encoder_parameters.quality_level,
@@ -759,4 +764,12 @@ pub(crate) fn find_device<'a>(
     }
 
     Err(VulkanInitError::NoDevice)
+}
+
+pub(crate) fn pad_to_16(value: NonZeroU32) -> NonZeroU32 {
+    if value % 16 == 0 {
+        value
+    } else {
+        value + (16 - (value % 16))
+    }
 }
