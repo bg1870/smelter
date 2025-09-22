@@ -5,6 +5,7 @@ use smelter_core::{
     graphics_context::GraphicsContext,
 };
 use smelter_render::RenderingMode;
+use tracing::info;
 
 use crate::{
     args::{Resolution, ResolutionPreset},
@@ -44,6 +45,7 @@ impl BenchmarkSuiteContext {
         default_framerate: u64,
         default_rendering_mode: RenderingMode,
     ) -> &'static Self {
+        info!("vulkan support: {}", wgpu_ctx.has_vulkan_support());
         let bbb_mp4_480p24fps = ensure_bunny_480p24fps().unwrap();
         let bbb_mp4_720p24fps = ensure_bunny_720p24fps().unwrap();
         let bbb_mp4_1080p30fps = ensure_bunny_1080p30fps().unwrap();
@@ -113,7 +115,7 @@ pub fn full_benchmark_suite(ctx: &GraphicsContext) -> Vec<Benchmark> {
         // - different input/output ratios
         benchmark_set_constant_input_output_ratio(ctx),
         // benchmark multiple encoding presets with ffmpeg encoder / single input no decoder
-        benchmark_set_ffmpeg_h264_encoder_preset(ctx),
+        benchmark_set_ffmpeg_h264_encoder(ctx),
         // benchmark multiple output resolutions with encoder / single input no decoder
         benchmark_set_output_resolutions(ctx),
         // rendering only / multiple outputs no encoder / single input no decoder
@@ -161,7 +163,6 @@ pub fn cpu_optimized_benchmark_suite(ctx: &GraphicsContext) -> Vec<Benchmark> {
 }
 
 pub fn encoders_only_benchmark_suite(ctx: &GraphicsContext) -> Vec<Benchmark> {
-    std::thread::sleep(Duration::from_secs(2));
     let ctx = BenchmarkSuiteContext::new(
         ctx,
         Resolution {
@@ -260,10 +261,20 @@ fn benchmark_set_constant_input_output_ratio(
         ("2 inputs per output", two_video_layout, 2),
         ("4 inputs per output", four_video_layout, 4),
     ];
-    let const_input_output_ratio_encoder_presets = [
-        FfmpegH264EncoderPreset::Ultrafast,
-        FfmpegH264EncoderPreset::Veryfast,
-        FfmpegH264EncoderPreset::Fast,
+    let const_input_output_ratio_codec = vec![
+        (EncoderOptions::VulkanH264, VideoDecoderOptions::VulkanH264),
+        (
+            EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Fast),
+            VideoDecoderOptions::FfmpegH264,
+        ),
+        (
+            EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Veryfast),
+            VideoDecoderOptions::FfmpegH264,
+        ),
+        (
+            EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Ultrafast),
+            VideoDecoderOptions::FfmpegH264,
+        ),
     ];
 
     let const_input_output_ratio_input = [
@@ -285,29 +296,24 @@ fn benchmark_set_constant_input_output_ratio(
         ),
     ];
 
-    let const_input_output_ratio_decoder = supported_decoders(ctx);
-
-    const_input_output_ratio_decoder
+    const_input_output_ratio_scenes
         .iter()
-        .flat_map(|decoder| {
-            const_input_output_ratio_scenes
+        .flat_map(|scene| {
+            const_input_output_ratio_codec
                 .iter()
-                .flat_map(|scene| {
-                    const_input_output_ratio_encoder_presets
+                .flat_map(|(encoder, decoder)| {
+                    const_input_output_ratio_input
                         .iter()
-                        .flat_map(|preset| {
-                            const_input_output_ratio_input
-                                .iter()
-                                .map(|input| (*scene, *preset, input.clone(), *decoder))
-                                .collect::<Vec<_>>()
-                        })
+                        .map(|input| (*scene, *encoder, input.clone(), *decoder))
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>()
         })
+        .collect::<Vec<_>>()
+        .into_iter()
         .map(|(scene, encoder, input, decoder)| Benchmark {
             id: format!(
-                "{} - preset: {:?}, input: {}, decoder: {:?}",
+                "{} - encoder: {:?}, input: {}, decoder: {:?}",
                 scene.0, encoder, input.0, decoder
             )
             .leak(),
@@ -315,7 +321,7 @@ fn benchmark_set_constant_input_output_ratio(
                 input_count: value * scene.2,
                 output_count: value,
                 scene_builder: scene.1,
-                encoder: EncoderOptions::FfmpegH264(encoder),
+                encoder,
                 decoder,
                 input_file: input.1.clone(),
                 ..ctx.default()
@@ -324,24 +330,24 @@ fn benchmark_set_constant_input_output_ratio(
         .collect()
 }
 
-fn benchmark_set_ffmpeg_h264_encoder_preset(ctx: &'static BenchmarkSuiteContext) -> Vec<Benchmark> {
+fn benchmark_set_ffmpeg_h264_encoder(ctx: &'static BenchmarkSuiteContext) -> Vec<Benchmark> {
     [
-        FfmpegH264EncoderPreset::Fast,
-        FfmpegH264EncoderPreset::Ultrafast,
-        FfmpegH264EncoderPreset::Superfast,
-        FfmpegH264EncoderPreset::Veryfast,
-        FfmpegH264EncoderPreset::Faster,
-        FfmpegH264EncoderPreset::Fast,
-        FfmpegH264EncoderPreset::Medium,
+        EncoderOptions::VulkanH264,
+        EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Ultrafast),
+        EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Superfast),
+        EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Veryfast),
+        EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Faster),
+        EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Fast),
+        EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Medium),
     ]
     .into_iter()
-    .map(|encoder_preset| Benchmark {
-        id: format!("ffmpeg_h264 - encoder_preset: {encoder_preset:?}").leak(),
+    .map(|encoder| Benchmark {
+        id: format!("ffmpeg_h264 - encoder: {encoder:?}").leak(),
         bench_pass_builder: Arc::new(Box::new(move |value: u64| SingleBenchmarkPass {
             input_count: 1,
             output_count: value,
             scene_builder: simple_tiles_with_all_inputs,
-            encoder: EncoderOptions::FfmpegH264(encoder_preset),
+            encoder,
             input_file: ctx.bbb_raw_720p_input.clone(), // no decoder
             ..ctx.default()
         })),
@@ -350,6 +356,10 @@ fn benchmark_set_ffmpeg_h264_encoder_preset(ctx: &'static BenchmarkSuiteContext)
 }
 
 fn benchmark_set_output_resolutions(ctx: &'static BenchmarkSuiteContext) -> Vec<Benchmark> {
+    let encoders = [
+        EncoderOptions::VulkanH264,
+        EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Veryfast),
+    ];
     [
         ResolutionPreset::Res2160p,
         ResolutionPreset::Res1440p,
@@ -358,14 +368,20 @@ fn benchmark_set_output_resolutions(ctx: &'static BenchmarkSuiteContext) -> Vec<
         ResolutionPreset::Res480p,
     ]
     .into_iter()
-    .map(|resolution_preset| Benchmark {
+    .flat_map(|resolution| {
+        encoders
+            .iter()
+            .map(|encoder| (encoder.clone(), resolution))
+            .collect::<Vec<_>>()
+    })
+    .map(|(encoder, resolution_preset)| Benchmark {
         id: format!("resolution: {resolution_preset:?}").leak(),
         bench_pass_builder: Arc::new(Box::new(move |value: u64| SingleBenchmarkPass {
             input_count: 1,
             output_count: value,
             output_resolution: resolution_preset.into(),
             scene_builder: simple_tiles_with_all_inputs,
-            encoder: EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Veryfast),
+            encoder: encoder,
             input_file: ctx.bbb_raw_720p_input.clone(), // no decoder
             ..ctx.default()
         })),
@@ -435,95 +451,63 @@ fn benchmark_set_decoder_only(ctx: &'static BenchmarkSuiteContext) -> Vec<Benchm
         ),
     ];
 
-    supported_decoders(ctx)
-        .iter()
-        .flat_map(|decoder| {
-            decoder_only_inputs
-                .iter()
-                .map(|input| (input.clone(), *decoder))
-                .collect::<Vec<_>>()
-        })
-        .map(|(input, decoder)| Benchmark {
-            id: format!("decoding only - decoder: {:?}, input: {}", decoder, input.0).leak(),
-            bench_pass_builder: Arc::new(Box::new(move |value: u64| SingleBenchmarkPass {
-                input_count: value,
-                output_count: 1,
-                output_resolution: ResolutionPreset::Res144p.into(),
-                encoder: EncoderOptions::Disabled,
-                decoder,
-                input_file: input.1.clone(),
-                scene_builder: blank,
-                ..ctx.default()
-            })),
-        })
-        .collect()
+    vec![
+        VideoDecoderOptions::VulkanH264,
+        VideoDecoderOptions::FfmpegH264,
+    ]
+    .iter()
+    .flat_map(|decoder| {
+        decoder_only_inputs
+            .iter()
+            .map(|input| (input.clone(), *decoder))
+            .collect::<Vec<_>>()
+    })
+    .map(|(input, decoder)| Benchmark {
+        id: format!("decoding only - decoder: {:?}, input: {}", decoder, input.0).leak(),
+        bench_pass_builder: Arc::new(Box::new(move |value: u64| SingleBenchmarkPass {
+            input_count: value,
+            output_count: 1,
+            output_resolution: ResolutionPreset::Res144p.into(),
+            encoder: EncoderOptions::Disabled,
+            decoder,
+            input_file: input.1.clone(),
+            scene_builder: blank,
+            ..ctx.default()
+        })),
+    })
+    .collect()
 }
 
 fn benchmark_set_encoder_only(ctx: &'static BenchmarkSuiteContext) -> Vec<Benchmark> {
     let output_resolutions = [
-        ResolutionPreset::Res480p,
         ResolutionPreset::Res720p,
         ResolutionPreset::Res1080p,
         ResolutionPreset::Res2160p,
     ];
-    supported_encoders(ctx)
-        .into_iter()
-        .flat_map(|encoder| {
-            output_resolutions
-                .iter()
-                .map(|res| (*res, encoder))
-                .collect::<Vec<_>>()
-        })
-        .map(|(resolution, encoder)| Benchmark {
-            id: format!("encoding only - encoder: {encoder:?}").leak(),
-            bench_pass_builder: Arc::new(Box::new(move |value: u64| SingleBenchmarkPass {
-                input_count: 1,
-                output_count: value,
-                output_resolution: resolution.into(),
-                encoder,
-                input_file: ctx.bbb_raw_720p_input.clone(),
-                scene_builder: single_video_layout,
-                ..ctx.default()
-            })),
-        })
-        .collect()
-}
-
-#[cfg(not(target_os = "macos"))]
-fn supported_decoders(ctx: &BenchmarkSuiteContext) -> Vec<VideoDecoderOptions> {
-    match ctx.wgpu_ctx.vulkan_ctx.is_some() {
-        true => vec![
-            VideoDecoderOptions::VulkanH264,
-            VideoDecoderOptions::FfmpegH264,
-        ],
-        false => vec![VideoDecoderOptions::FfmpegH264],
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn supported_decoders(_ctx: &BenchmarkSuiteContext) -> Vec<VideoDecoderOptions> {
-    vec![VideoDecoderOptions::FfmpegH264]
-}
-
-#[cfg(not(target_os = "macos"))]
-fn supported_encoders(ctx: &BenchmarkSuiteContext) -> Vec<EncoderOptions> {
-    match ctx.wgpu_ctx.vulkan_ctx.is_some() {
-        true => vec![
-            EncoderOptions::VulkanH264,
-            EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Fast),
-            EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Ultrafast),
-        ],
-        false => vec![
-            EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Fast),
-            EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Ultrafast),
-        ],
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn supported_encoders(_ctx: &BenchmarkSuiteContext) -> Vec<EncoderOptions> {
     vec![
+        EncoderOptions::VulkanH264,
         EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Fast),
+        EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Veryfast),
         EncoderOptions::FfmpegH264(FfmpegH264EncoderPreset::Ultrafast),
     ]
+    .into_iter()
+    .flat_map(|encoder| {
+        output_resolutions
+            .iter()
+            .map(|res| (*res, encoder))
+            .collect::<Vec<_>>()
+    })
+    .map(|(resolution, encoder)| Benchmark {
+        id: format!("encoding only - encoder: {encoder:?}").leak(),
+        bench_pass_builder: Arc::new(Box::new(move |value: u64| SingleBenchmarkPass {
+            input_count: 1,
+            output_count: value,
+            output_resolution: resolution.into(),
+            encoder,
+            input_file: ctx.bbb_raw_720p_input.clone(),
+            scene_builder: single_video_layout,
+            ..ctx.default()
+        })),
+    })
+    .collect()
 }

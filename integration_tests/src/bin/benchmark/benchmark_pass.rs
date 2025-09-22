@@ -149,7 +149,6 @@ impl SingleBenchmarkPass {
                             &pipeline, output_id, root, preset,
                         )?,
 
-                    #[cfg(not(target_os = "macos"))]
                     EncoderOptions::VulkanH264 => {
                         self.register_pipeline_encoded_output_vulkan(&pipeline, output_id, root)?
                     }
@@ -208,7 +207,6 @@ impl SingleBenchmarkPass {
         Ok(Box::new(result))
     }
 
-    #[cfg(not(target_os = "macos"))]
     fn register_pipeline_encoded_output_vulkan(
         &self,
         pipeline: &Arc<Mutex<Pipeline>>,
