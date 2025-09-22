@@ -39,6 +39,7 @@ fn main() {
         height,
     );
 
+    return;
     let mut encoder = vulkan_device
         .create_wgpu_textures_encoder(vulkan_device.encoder_parameters_high_quality(
             VideoParameters {
@@ -95,6 +96,21 @@ impl WgpuState {
         width: std::num::NonZeroU32,
         height: std::num::NonZeroU32,
     ) -> WgpuState {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("wgpu render target"),
+            format: wgpu::TextureFormat::NV12,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            dimension: wgpu::TextureDimension::D2,
+            sample_count: 1,
+            view_formats: &[wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::Rg8Unorm],
+            mip_level_count: 1,
+            size: wgpu::Extent3d {
+                width: width.get(),
+                height: height.get(),
+                depth_or_array_layers: 1,
+            },
+        });
+
         let shader = wgpu::include_wgsl!("texture_as_input.wgsl");
         let shader = device.create_shader_module(shader);
 

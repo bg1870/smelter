@@ -237,6 +237,7 @@ impl VulkanDevice {
                     required_limits: wgpu_limits,
                     required_features: wgpu_features,
                     trace: wgpu::Trace::Off,
+                    experimental_features: wgpu::ExperimentalFeatures::enabled(),
                 },
             )?
         };
