@@ -99,7 +99,7 @@ impl WgpuState {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("wgpu render target"),
             format: wgpu::TextureFormat::NV12,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             dimension: wgpu::TextureDimension::D2,
             sample_count: 1,
             view_formats: &[wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::Rg8Unorm],
