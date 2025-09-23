@@ -3,8 +3,8 @@ use std::sync::Arc;
 use smelter_render::{
     image::{ImageSource, ImageSpec, ImageType},
     scene::{
-        Component, ImageComponent, InputStreamComponent, RGBAColor, RescalerComponent,
-        ShaderComponent, Size, TilesComponent, ViewComponent,
+        Component, ImageComponent, InputStreamComponent, RGBAColor, RescaleMode, RescalerComponent,
+        ShaderComponent, Size, TilesComponent, ViewChildrenDirection, ViewComponent,
     },
     shader::ShaderSpec,
     InputId, OutputId, RendererId, RendererSpec,
@@ -110,13 +110,11 @@ pub fn single_video_layout(ctx: &SceneContext, output_id: &OutputId) -> Componen
         return blank(ctx, output_id);
     }
     let input_id = ctx.inputs[output_index % ctx.inputs.len()].clone();
-    Component::Tiles(TilesComponent {
-        margin: 2.0,
-        children: vec![Component::InputStream(InputStreamComponent {
+    Component::Rescaler(RescalerComponent {
+        child: Box::new(Component::InputStream(InputStreamComponent {
             id: None,
             input_id,
-        })],
-        background_color: RGBAColor(128, 128, 128, 255),
+        })),
         ..Default::default()
     })
 }
@@ -136,16 +134,25 @@ pub fn two_video_layout(ctx: &SceneContext, output_id: &OutputId) -> Component {
     let input_1 = ctx.inputs[(output_index * 2) % ctx.inputs.len()].clone();
     let input_2 = ctx.inputs[(output_index * 2 + 1) % ctx.inputs.len()].clone();
 
-    Component::Tiles(TilesComponent {
-        margin: 2.0,
+    // fill to avoid blank space that affects encoding performance
+    Component::View(ViewComponent {
+        direction: ViewChildrenDirection::Row,
         children: vec![
-            Component::InputStream(InputStreamComponent {
-                id: None,
-                input_id: input_1,
+            Component::Rescaler(RescalerComponent {
+                child: Box::new(Component::InputStream(InputStreamComponent {
+                    id: None,
+                    input_id: input_1,
+                })),
+                mode: RescaleMode::Fill,
+                ..Default::default()
             }),
-            Component::InputStream(InputStreamComponent {
-                id: None,
-                input_id: input_2,
+            Component::Rescaler(RescalerComponent {
+                child: Box::new(Component::InputStream(InputStreamComponent {
+                    id: None,
+                    input_id: input_2,
+                })),
+                mode: RescaleMode::Fill,
+                ..Default::default()
             }),
         ],
         background_color: RGBAColor(128, 128, 128, 255),
@@ -171,7 +178,6 @@ pub fn four_video_layout(ctx: &SceneContext, output_id: &OutputId) -> Component 
     let input_4 = ctx.inputs[(output_index * 4 + 3) % ctx.inputs.len()].clone();
 
     Component::Tiles(TilesComponent {
-        margin: 2.0,
         children: vec![
             Component::InputStream(InputStreamComponent {
                 id: None,
