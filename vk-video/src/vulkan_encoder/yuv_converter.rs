@@ -24,7 +24,7 @@ pub enum YuvConverterError {
 
 pub(crate) struct Converter {
     device: Arc<VulkanDevice>,
-    image: Arc<Mutex<Image>>,
+    pub image: Arc<Mutex<Image>>,
     pipeline_y: ConvertingPipeline,
     pipeline_uv: ConvertingPipeline,
 }
@@ -78,7 +78,9 @@ impl Converter {
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
             .usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::VIDEO_ENCODE_SRC_KHR,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::VIDEO_ENCODE_SRC_KHR
+                    | vk::ImageUsageFlags::TRANSFER_DST,
             )
             .sharing_mode(vk::SharingMode::CONCURRENT)
             .queue_family_indices(&queue_indices)
@@ -229,32 +231,70 @@ impl Converter {
 
         let image = unsafe { texture.as_hal::<VkApi>().unwrap().raw_handle() };
 
-        let view_create_info = vk::ImageViewCreateInfo::default()
-            .image(image)
-            .view_type(vk::ImageViewType::TYPE_2D)
-            .format(vk::Format::R8G8B8A8_UNORM)
-            .components(vk::ComponentMapping::default())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                level_count: 1,
-                base_mip_level: 0,
-                layer_count: 1,
-                base_array_layer: 0,
-            });
-
-        let view = ImageView::new(
-            self.device.device.clone(),
-            self.image.clone(),
-            &view_create_info,
-        )?;
-
         let command_buffer = unsafe {
             command_encoder
                 .as_hal_mut::<wgpu::hal::vulkan::Api, _, _>(|enc| enc.unwrap().raw_handle())
         };
 
-        self.pipeline_y.convert(command_buffer, &view);
-        self.pipeline_uv.convert(command_buffer, &view);
+        unsafe {
+            self.device.device.cmd_copy_image(
+                command_buffer,
+                image,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                self.image.lock().unwrap().image,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                &[vk::ImageCopy {
+                    src_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::PLANE_0_KHR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
+                    src_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                    dst_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::PLANE_0_KHR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
+                    dst_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                    extent: vk::Extent3D {
+                        width: texture.width(),
+                        height: texture.height(),
+                        depth: 1,
+                    },
+                }],
+            );
+
+            self.device.device.cmd_copy_image(
+                command_buffer,
+                image,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                self.image.lock().unwrap().image,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                &[vk::ImageCopy {
+                    src_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::PLANE_1_KHR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
+                    src_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                    dst_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::PLANE_1_KHR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
+                    dst_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                    extent: vk::Extent3D {
+                        width: texture.width() / 2,
+                        height: texture.height() / 2,
+                        depth: 1,
+                    },
+                }],
+            );
+        }
 
         let wgpu_command_buffer = unsafe {
             command_encoder.as_hal_mut::<VkApi, _, _>(|enc| enc.unwrap().end_encoding())?
@@ -284,7 +324,6 @@ impl Converter {
 
         Ok(ConvertState {
             image: self.image.clone(),
-            _view: view,
             _encoder: command_encoder,
             fence,
             _buffer: wgpu_command_buffer,
@@ -297,7 +336,6 @@ pub(crate) struct ConvertState {
     _encoder: wgpu::CommandEncoder,
     pub(crate) fence: wgpu::hal::vulkan::Fence,
     pub(crate) image: Arc<Mutex<Image>>,
-    pub(crate) _view: ImageView,
 }
 
 struct ShaderInfo {

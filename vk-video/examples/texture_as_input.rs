@@ -62,19 +62,19 @@ fn main() {
         let time = 1.0 / 30.0 * i as f32;
         wgpu_state.render(time);
 
-        // let res = unsafe {
-        //     encoder
-        //         .encode(
-        //             Frame {
-        //                 data: wgpu_state.texture.clone(),
-        //                 pts: None,
-        //             },
-        //             false,
-        //         )
-        //         .unwrap()
-        // };
+        let res = unsafe {
+            encoder
+                .encode(
+                    Frame {
+                        data: wgpu_state.texture.clone(),
+                        pts: None,
+                    },
+                    false,
+                )
+                .unwrap()
+        };
 
-        // output_file.write_all(&res.data).unwrap();
+        output_file.write_all(&res.data).unwrap();
     }
 }
 
@@ -188,7 +188,7 @@ impl WgpuState {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("wgpu render target"),
             format: wgpu::TextureFormat::NV12,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             dimension: wgpu::TextureDimension::D2,
             sample_count: 1,
             view_formats: &[wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::Rg8Unorm],
@@ -263,27 +263,27 @@ impl WgpuState {
             render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, &time.to_ne_bytes());
             render_pass.draw(0..3, 0..1);
         }
-        // {
-        //     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        //         label: Some("wgpu render pass (plane 1)"),
-        //         timestamp_writes: None,
-        //         occlusion_query_set: None,
-        //         depth_stencil_attachment: None,
-        //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-        //             view: &self.view_uv,
-        //             ops: wgpu::Operations {
-        //                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-        //                 store: wgpu::StoreOp::Store,
-        //             },
-        //             resolve_target: None,
-        //             depth_slice: None,
-        //         })],
-        //     });
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wgpu render pass (plane 1)"),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                depth_stencil_attachment: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.view_uv,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    resolve_target: None,
+                    depth_slice: None,
+                })],
+            });
 
-        //     render_pass.set_pipeline(&self.pipeline_uv);
-        //     render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, &time.to_ne_bytes());
-        //     render_pass.draw(0..3, 0..1);
-        // }
+            render_pass.set_pipeline(&self.pipeline_uv);
+            render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, &time.to_ne_bytes());
+            render_pass.draw(0..3, 0..1);
+        }
 
         self.queue.submit([encoder.finish()]);
     }
