@@ -39,7 +39,6 @@ fn main() {
         height,
     );
 
-    return;
     let mut encoder = vulkan_device
         .create_wgpu_textures_encoder(vulkan_device.encoder_parameters_high_quality(
             VideoParameters {
@@ -63,27 +62,29 @@ fn main() {
         let time = 1.0 / 30.0 * i as f32;
         wgpu_state.render(time);
 
-        let res = unsafe {
-            encoder
-                .encode(
-                    Frame {
-                        data: wgpu_state.texture.clone(),
-                        pts: None,
-                    },
-                    false,
-                )
-                .unwrap()
-        };
+        // let res = unsafe {
+        //     encoder
+        //         .encode(
+        //             Frame {
+        //                 data: wgpu_state.texture.clone(),
+        //                 pts: None,
+        //             },
+        //             false,
+        //         )
+        //         .unwrap()
+        // };
 
-        output_file.write_all(&res.data).unwrap();
+        // output_file.write_all(&res.data).unwrap();
     }
 }
 
 #[cfg(vulkan)]
 struct WgpuState {
-    pipeline: wgpu::RenderPipeline,
+    pipeline_y: wgpu::RenderPipeline,
+    pipeline_uv: wgpu::RenderPipeline,
     texture: wgpu::Texture,
-    view: wgpu::TextureView,
+    view_y: wgpu::TextureView,
+    view_uv: wgpu::TextureView,
     device: wgpu::Device,
     queue: wgpu::Queue,
 }
@@ -96,44 +97,6 @@ impl WgpuState {
         width: std::num::NonZeroU32,
         height: std::num::NonZeroU32,
     ) -> WgpuState {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("wgpu render target"),
-            format: wgpu::TextureFormat::NV12,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            dimension: wgpu::TextureDimension::D2,
-            sample_count: 1,
-            view_formats: &[wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::Rg8Unorm],
-            mip_level_count: 1,
-            size: wgpu::Extent3d {
-                width: width.get(),
-                height: height.get(),
-                depth_or_array_layers: 1,
-            },
-        });
-
-        let view1 = texture.create_view(&wgpu::TextureViewDescriptor {
-            label: None,
-            format: Some(wgpu::TextureFormat::R8Unorm),
-            dimension: Some(wgpu::TextureViewDimension::D2),
-            usage: Some(wgpu::TextureUsages::RENDER_ATTACHMENT),
-            aspect: wgpu::TextureAspect::Plane0,
-            base_mip_level: 0,
-            mip_level_count: None,
-            base_array_layer: 0,
-            array_layer_count: None,
-        });
-        let view2 = texture.create_view(&wgpu::TextureViewDescriptor {
-            label: None,
-            format: Some(wgpu::TextureFormat::Rg8Unorm),
-            dimension: Some(wgpu::TextureViewDimension::D2),
-            usage: Some(wgpu::TextureUsages::RENDER_ATTACHMENT),
-            aspect: wgpu::TextureAspect::Plane1,
-            base_mip_level: 0,
-            mip_level_count: None,
-            base_array_layer: 0,
-            array_layer_count: None,
-        });
-
         let shader = wgpu::include_wgsl!("texture_as_input.wgsl");
         let shader = device.create_shader_module(shader);
 
@@ -146,23 +109,61 @@ impl WgpuState {
             }],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline_y = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("wgpu pipeline"),
             layout: Some(&pipeline_layout),
             cache: None,
             vertex: wgpu::VertexState {
                 module: &shader,
                 buffers: &[],
-                entry_point: None,
+                entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: None,
+                entry_point: Some("fs_main_y"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     blend: None,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    format: wgpu::TextureFormat::R8Unorm,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                front_face: wgpu::FrontFace::Ccw,
+                conservative: false,
+                unclipped_depth: false,
+                strip_index_format: None,
+            },
+            multiview: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            depth_stencil: None,
+        });
+
+        let pipeline_uv = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("wgpu pipeline"),
+            layout: Some(&pipeline_layout),
+            cache: None,
+            vertex: wgpu::VertexState {
+                module: &shader,
+                buffers: &[],
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main_uv"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    blend: None,
+                    format: wgpu::TextureFormat::Rg8Unorm,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -186,11 +187,11 @@ impl WgpuState {
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("wgpu render target"),
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: wgpu::TextureFormat::NV12,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             dimension: wgpu::TextureDimension::D2,
             sample_count: 1,
-            view_formats: &[],
+            view_formats: &[wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::Rg8Unorm],
             mip_level_count: 1,
             size: wgpu::Extent3d {
                 width: width.get(),
@@ -199,7 +200,7 @@ impl WgpuState {
             },
         });
 
-        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        let view_y = texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("wgpu render target view"),
             base_mip_level: 0,
             mip_level_count: None,
@@ -207,14 +208,28 @@ impl WgpuState {
             array_layer_count: None,
             dimension: Some(wgpu::TextureViewDimension::D2),
             usage: Some(wgpu::TextureUsages::RENDER_ATTACHMENT),
-            format: Some(wgpu::TextureFormat::Rgba8Unorm),
-            aspect: wgpu::TextureAspect::All,
+            format: Some(wgpu::TextureFormat::R8Unorm),
+            aspect: wgpu::TextureAspect::Plane0,
+        });
+
+        let view_uv = texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("wgpu render target view"),
+            base_mip_level: 0,
+            mip_level_count: None,
+            base_array_layer: 0,
+            array_layer_count: None,
+            dimension: Some(wgpu::TextureViewDimension::D2),
+            usage: Some(wgpu::TextureUsages::RENDER_ATTACHMENT),
+            format: Some(wgpu::TextureFormat::Rg8Unorm),
+            aspect: wgpu::TextureAspect::Plane1,
         });
 
         WgpuState {
-            pipeline,
+            pipeline_y,
+            pipeline_uv,
             texture,
-            view,
+            view_y,
+            view_uv,
             device,
             queue,
         }
@@ -229,12 +244,12 @@ impl WgpuState {
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("wgpu render pass"),
+                label: Some("wgpu render pass (plane 0)"),
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 depth_stencil_attachment: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.view,
+                    view: &self.view_y,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
@@ -244,24 +259,33 @@ impl WgpuState {
                 })],
             });
 
-            render_pass.set_pipeline(&self.pipeline);
+            render_pass.set_pipeline(&self.pipeline_y);
             render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, &time.to_ne_bytes());
             render_pass.draw(0..3, 0..1);
         }
+        // {
+        //     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        //         label: Some("wgpu render pass (plane 1)"),
+        //         timestamp_writes: None,
+        //         occlusion_query_set: None,
+        //         depth_stencil_attachment: None,
+        //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+        //             view: &self.view_uv,
+        //             ops: wgpu::Operations {
+        //                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+        //                 store: wgpu::StoreOp::Store,
+        //             },
+        //             resolve_target: None,
+        //             depth_slice: None,
+        //         })],
+        //     });
 
-        encoder.transition_resources(
-            [].into_iter(),
-            [wgpu::TextureTransition {
-                texture: &self.texture,
-                state: wgpu::TextureUses::RESOURCE,
-                selector: None,
-            }]
-            .into_iter(),
-        );
+        //     render_pass.set_pipeline(&self.pipeline_uv);
+        //     render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, &time.to_ne_bytes());
+        //     render_pass.draw(0..3, 0..1);
+        // }
 
-        let buffer = encoder.finish();
-
-        self.queue.submit([buffer]);
+        self.queue.submit([encoder.finish()]);
     }
 }
 
