@@ -272,7 +272,12 @@ impl WgpuState {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &self.view_uv,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.5,
+                            g: 0.5,
+                            b: 0.0,
+                            a: 1.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                     resolve_target: None,
