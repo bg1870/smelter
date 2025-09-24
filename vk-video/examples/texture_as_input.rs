@@ -191,7 +191,7 @@ impl WgpuState {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             dimension: wgpu::TextureDimension::D2,
             sample_count: 1,
-            view_formats: &[wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::Rg8Unorm],
+            view_formats: &[],
             mip_level_count: 1,
             size: wgpu::Extent3d {
                 width: width.get(),
