@@ -1,0 +1,242 @@
+[
+  {
+    "id": "1 input per output - encoder: VulkanH264, decoder: VulkanH264",
+    "config": {
+      "input_count": "3",
+      "output_count": "3",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "VulkanH264",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "1 input per output - encoder: FfmpegH264(Medium), decoder: VulkanH264",
+    "config": {
+      "input_count": "2",
+      "output_count": "2",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Medium)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "1 input per output - encoder: FfmpegH264(Fast), decoder: VulkanH264",
+    "config": {
+      "input_count": "2",
+      "output_count": "2",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Fast)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "1 input per output - encoder: FfmpegH264(Veryfast), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "4",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Veryfast)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "1 input per output - encoder: FfmpegH264(Ultrafast), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "4",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Ultrafast)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "2 inputs per output - encoder: VulkanH264, decoder: VulkanH264",
+    "config": {
+      "input_count": "6",
+      "output_count": "3",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "VulkanH264",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "2 inputs per output - encoder: FfmpegH264(Medium), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "2",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Medium)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "2 inputs per output - encoder: FfmpegH264(Fast), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "2",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Fast)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "2 inputs per output - encoder: FfmpegH264(Veryfast), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "2",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Veryfast)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "2 inputs per output - encoder: FfmpegH264(Ultrafast), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "2",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Ultrafast)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "4 inputs per output - encoder: VulkanH264, decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "1",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "VulkanH264",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "4 inputs per output - encoder: FfmpegH264(Medium), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "1",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Medium)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "4 inputs per output - encoder: FfmpegH264(Fast), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "1",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Fast)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "4 inputs per output - encoder: FfmpegH264(Veryfast), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "1",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Veryfast)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "id": "4 inputs per output - encoder: FfmpegH264(Ultrafast), decoder: VulkanH264",
+    "config": {
+      "input_count": "4",
+      "output_count": "1",
+      "framerate": "30",
+      "output_resolution": "Resolution { width: 3840, height: 2160 }",
+      "input_file": "Mp4(\"/home/ubuntu/smelter/integration_tests/./examples/assets/BigBuckBunny2160p30fps30s.mp4\")",
+      "encoder": "FfmpegH264(Ultrafast)",
+      "decoder": "VulkanH264",
+      "warm_up_time": {
+        "secs": 3,
+        "nanos": 0
+      }
+    }
+  }
+]
