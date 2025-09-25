@@ -1832,8 +1832,7 @@ dependencies = [
 [[package]]
 name = "glyphon"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c6a289ad2a23656ccf4306fc818cef6776471a136d909123fd26c0f2ecb44ba"
+source = "git+https://github.com/software-mansion-labs/glyphon?rev=f0562a3#f0562a311d81098d6b7e0fedcc6a9376d969da40"
 dependencies = [
  "cosmic-text",
  "etagere",
@@ -2851,8 +2850,7 @@ dependencies = [
 [[package]]
 name = "naga"
 version = "25.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b977c445f26e49757f9aca3631c3b8b836942cb278d69a92e7b80d3b24da632"
+source = "git+https://github.com/software-mansion-labs/wgpu?rev=da6189c#da6189c5abce7093ad422fdc6649e9888d2fff00"
 dependencies = [
  "arrayvec",
  "bit-set",
@@ -6141,8 +6139,7 @@ checksum = "53a85b86a771b1c87058196170769dd264f66c0782acf1ae6cc51bfd64b39082"
 [[package]]
 name = "wgpu"
 version = "25.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec8fb398f119472be4d80bc3647339f56eb63b2a331f6a3d16e25d8144197dd9"
+source = "git+https://github.com/software-mansion-labs/wgpu?rev=da6189c#da6189c5abce7093ad422fdc6649e9888d2fff00"
 dependencies = [
  "arrayvec",
  "bitflags 2.9.0",
@@ -6168,9 +6165,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-core"
-version = "25.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a19813e647da7aa3cdaa84f5846e2c64114970ea7c86b1e6aae8be08091f4bdc"
+version = "25.0.2"
+source = "git+https://github.com/software-mansion-labs/wgpu?rev=da6189c#da6189c5abce7093ad422fdc6649e9888d2fff00"
 dependencies = [
  "arrayvec",
  "bit-set",
@@ -6202,8 +6198,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-apple"
 version = "25.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfd488b3239b6b7b185c3b045c39ca6bf8af34467a4c5de4e0b1a564135d093d"
+source = "git+https://github.com/software-mansion-labs/wgpu?rev=da6189c#da6189c5abce7093ad422fdc6649e9888d2fff00"
 dependencies = [
  "wgpu-hal",
 ]
@@ -6211,8 +6206,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-emscripten"
 version = "25.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f09ad7aceb3818e52539acc679f049d3475775586f3f4e311c30165cf2c00445"
+source = "git+https://github.com/software-mansion-labs/wgpu?rev=da6189c#da6189c5abce7093ad422fdc6649e9888d2fff00"
 dependencies = [
  "wgpu-hal",
 ]
@@ -6220,8 +6214,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-wasm"
 version = "25.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eca8809ad123f6c7f2c5e01a2c7117c4fdfd02f70bd422ee2533f69dfa98756c"
+source = "git+https://github.com/software-mansion-labs/wgpu?rev=da6189c#da6189c5abce7093ad422fdc6649e9888d2fff00"
 dependencies = [
  "wgpu-hal",
 ]
@@ -6229,17 +6222,15 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
 version = "25.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cba5fb5f7f9c98baa7c889d444f63ace25574833df56f5b817985f641af58e46"
+source = "git+https://github.com/software-mansion-labs/wgpu?rev=da6189c#da6189c5abce7093ad422fdc6649e9888d2fff00"
 dependencies = [
  "wgpu-hal",
 ]
 
 [[package]]
 name = "wgpu-hal"
-version = "25.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb7c4a1dc42ff14c23c9b11ebf1ee85cde661a9b1cf0392f79c1faca5bc559fb"
+version = "25.0.2"
+source = "git+https://github.com/software-mansion-labs/wgpu?rev=da6189c#da6189c5abce7093ad422fdc6649e9888d2fff00"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -6285,8 +6276,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "25.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2aa49460c2a8ee8edba3fca54325540d904dd85b2e086ada762767e17d06e8bc"
+source = "git+https://github.com/software-mansion-labs/wgpu?rev=da6189c#da6189c5abce7093ad422fdc6649e9888d2fff00"
 dependencies = [
  "bitflags 2.9.0",
  "bytemuck",

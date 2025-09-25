@@ -1048,15 +1048,15 @@ impl VulkanEncoder<'_> {
         frame: Frame<wgpu::Texture>,
         force_idr: bool,
     ) -> Result<EncodedOutputChunk<Vec<u8>>, VulkanEncoderError> {
-        let convert_state =
-            unsafe { self.converter.as_ref().unwrap().convert(frame.data) }.unwrap();
+        // let convert_state =
+        //     unsafe { self.converter.as_ref().unwrap().convert(frame.data) }.unwrap();
 
-        let sem = match convert_state.fence {
-            wgpu::hal::vulkan::Fence::TimelineSemaphore(semaphore) => semaphore,
-            wgpu::hal::vulkan::Fence::FencePool { .. } => {
-                panic!("wgpu fence pools are unsupported")
-            }
-        };
+        // let sem = match convert_state.fence {
+        //     wgpu::hal::vulkan::Fence::TimelineSemaphore(semaphore) => semaphore,
+        //     wgpu::hal::vulkan::Fence::FencePool { .. } => {
+        //         panic!("wgpu fence pools are unsupported")
+        //     }
+        // };
 
         let is_keyframe = force_idr || self.idr_period_counter == 0;
         let result = self.encode(convert_state.image, force_idr, sem)?;

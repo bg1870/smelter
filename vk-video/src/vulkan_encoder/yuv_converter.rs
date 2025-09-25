@@ -25,9 +25,7 @@ pub enum YuvConverterError {
 
 pub(crate) struct Converter {
     device: Arc<VulkanDevice>,
-    image: Arc<Mutex<Image>>,
-    pipeline_y: ConvertingPipeline,
-    pipeline_uv: ConvertingPipeline,
+    wgpu_texture: wgpu::Texture,
 }
 
 impl Converter {
@@ -79,9 +77,7 @@ impl Converter {
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::VIDEO_ENCODE_SRC_KHR,
-            )
+            .usage(vk::ImageUsageFlags::VIDEO_ENCODE_SRC_KHR | vk::ImageUsageFlags::TRANSFER_DST)
             .sharing_mode(vk::SharingMode::CONCURRENT)
             .queue_family_indices(&queue_indices)
             .initial_layout(vk::ImageLayout::UNDEFINED)
@@ -97,7 +93,54 @@ impl Converter {
             0,
         )?;
 
-        let image = Arc::new(Mutex::new(image));
+        let image = Arc::new(image);
+        let image_clone = image.clone();
+
+        let hal_texture = unsafe {
+            wgpu::hal::vulkan::Device::texture_from_raw(
+                **image,
+                &wgpu::hal::TextureDescriptor {
+                    label: Some("vulkan video output texture"),
+                    usage: wgpu::TextureUses::COPY_DST,
+                    memory_flags: wgpu::hal::MemoryFlags::empty(),
+                    size: wgpu::Extent3d {
+                        width: extent.width,
+                        height: extent.height,
+                        depth_or_array_layers: extent.depth,
+                    },
+                    dimension: wgpu::TextureDimension::D2,
+                    sample_count: 1,
+                    view_formats: Vec::new(),
+                    format: wgpu::TextureFormat::NV12,
+                    mip_level_count: 1,
+                },
+                Some(Box::new(move || {
+                    drop(image_clone);
+                })),
+            )
+        };
+        let wgpu_texture = unsafe {
+            device
+                .vulkan_device
+                .wgpu_device
+                .create_texture_from_hal::<wgpu::hal::vulkan::Api>(
+                    hal_texture,
+                    &wgpu::TextureDescriptor {
+                        label: Some("vulkan video output texture"),
+                        usage: wgpu::TextureUsages::COPY_DST,
+                        size: wgpu::Extent3d {
+                            width: extent.width,
+                            height: extent.height,
+                            depth_or_array_layers: extent.depth,
+                        },
+                        dimension: wgpu::TextureDimension::D2,
+                        sample_count: 1,
+                        view_formats: &[],
+                        format: wgpu::TextureFormat::NV12,
+                        mip_level_count: 1,
+                    },
+                )
+        };
 
         let module =
             wgpu::naga::front::wgsl::parse_str(include_str!("../shaders/rgba_to_yuv.wgsl"))
@@ -148,35 +191,35 @@ impl Converter {
 
         let common_state = Arc::new(CommonState::new(device.vulkan_device.clone())?);
 
-        let pipeline_y = ConvertingPipeline::new(
-            device.vulkan_device.clone(),
-            ShaderInfo {
-                entry_point: c"vs_main",
-                compiled_shader: compiled_vertex.clone(),
-            },
-            ShaderInfo {
-                entry_point: c"fs_main_y",
-                compiled_shader: compiled_fragment_y,
-            },
-            common_state.clone(),
-            image.clone(),
-            vk::Format::R8_UNORM,
-        )?;
+        // let pipeline_y = ConvertingPipeline::new(
+        //     device.vulkan_device.clone(),
+        //     ShaderInfo {
+        //         entry_point: c"vs_main",
+        //         compiled_shader: compiled_vertex.clone(),
+        //     },
+        //     ShaderInfo {
+        //         entry_point: c"fs_main_y",
+        //         compiled_shader: compiled_fragment_y,
+        //     },
+        //     common_state.clone(),
+        //     image.clone(),
+        //     vk::Format::R8_UNORM,
+        // )?;
 
-        let pipeline_uv = ConvertingPipeline::new(
-            device.vulkan_device.clone(),
-            ShaderInfo {
-                entry_point: c"vs_main",
-                compiled_shader: compiled_vertex.clone(),
-            },
-            ShaderInfo {
-                entry_point: c"fs_main_uv",
-                compiled_shader: compiled_fragment_uv,
-            },
-            common_state.clone(),
-            image.clone(),
-            vk::Format::R8G8_UNORM,
-        )?;
+        // let pipeline_uv = ConvertingPipeline::new(
+        //     device.vulkan_device.clone(),
+        //     ShaderInfo {
+        //         entry_point: c"vs_main",
+        //         compiled_shader: compiled_vertex.clone(),
+        //     },
+        //     ShaderInfo {
+        //         entry_point: c"fs_main_uv",
+        //         compiled_shader: compiled_fragment_uv,
+        //     },
+        //     common_state.clone(),
+        //     image.clone(),
+        //     vk::Format::R8G8_UNORM,
+        // )?;
 
         let command_buffer = unsafe { command_encoder.end_encoding()? };
 
@@ -203,9 +246,7 @@ impl Converter {
 
         Ok(Self {
             device: device.vulkan_device.clone(),
-            image,
-            pipeline_y,
-            pipeline_uv,
+            wgpu_texture,
         })
     }
 
@@ -223,79 +264,110 @@ impl Converter {
             .wgpu_device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        let image = unsafe {
-            texture.as_hal::<VkApi, _, _>(|t| {
-                let t = t.unwrap();
-                t.raw_handle()
-            })
-        };
+        command_encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::Plane0,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.wgpu_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::Plane0,
+            },
+            self.wgpu_texture.size(),
+        );
+        command_encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::Plane1,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.wgpu_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::Plane1,
+            },
+            self.wgpu_texture.size(),
+        );
 
-        let view_create_info = vk::ImageViewCreateInfo::default()
-            .image(image)
-            .view_type(vk::ImageViewType::TYPE_2D)
-            .format(vk::Format::R8G8B8A8_UNORM)
-            .components(vk::ComponentMapping::default())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                level_count: 1,
-                base_mip_level: 0,
-                layer_count: 1,
-                base_array_layer: 0,
-            });
+        // let image = unsafe {
+        //     texture.as_hal::<VkApi, _, _>(|t| {
+        //         let t = t.unwrap();
+        //         t.raw_handle()
+        //     })
+        // };
 
-        let view = ImageView::new(
-            self.device.device.clone(),
-            self.image.clone(),
-            &view_create_info,
-        )?;
+        // let view_create_info = vk::ImageViewCreateInfo::default()
+        //     .image(image)
+        //     .view_type(vk::ImageViewType::TYPE_2D)
+        //     .format(vk::Format::R8G8B8A8_UNORM)
+        //     .components(vk::ComponentMapping::default())
+        //     .subresource_range(vk::ImageSubresourceRange {
+        //         aspect_mask: vk::ImageAspectFlags::COLOR,
+        //         level_count: 1,
+        //         base_mip_level: 0,
+        //         layer_count: 1,
+        //         base_array_layer: 0,
+        //     });
 
-        let command_buffer = unsafe {
-            command_encoder
-                .as_hal_mut::<wgpu::hal::vulkan::Api, _, _>(|enc| enc.unwrap().raw_handle())
-        };
+        // let view = ImageView::new(
+        //     self.device.device.clone(),
+        //     self.image.clone(),
+        //     &view_create_info,
+        // )?;
 
-        self.pipeline_y.convert(command_buffer, &view);
-        self.pipeline_uv.convert(command_buffer, &view);
+        // let command_buffer = unsafe {
+        //     command_encoder
+        //         .as_hal_mut::<wgpu::hal::vulkan::Api, _, _>(|enc| enc.unwrap().raw_handle())
+        // };
 
-        let wgpu_command_buffer = unsafe {
-            command_encoder.as_hal_mut::<VkApi, _, _>(|enc| enc.unwrap().end_encoding())?
-        };
+        // self.pipeline_y.convert(command_buffer, &view);
+        // self.pipeline_uv.convert(command_buffer, &view);
 
-        unsafe {
-            command_encoder.as_hal_mut::<VkApi, _, _>(|enc| {
-                enc.unwrap().begin_encoding(Some("throwaway empty buffer"))
-            })?;
-        }
+        // let wgpu_command_buffer = unsafe {
+        //     command_encoder.as_hal_mut::<VkApi, _, _>(|enc| enc.unwrap().end_encoding())?
+        // };
 
-        let mut fence = unsafe {
-            self.device
-                .wgpu_device()
-                .as_hal::<VkApi, _, _>(|d| d.unwrap().create_fence())?
-        };
+        // unsafe {
+        //     command_encoder.as_hal_mut::<VkApi, _, _>(|enc| {
+        //         enc.unwrap().begin_encoding(Some("throwaway empty buffer"))
+        //     })?;
+        // }
 
-        unsafe {
-            self.device.wgpu_queue().as_hal::<VkApi, _, _>(|q| {
-                q.unwrap()
-                    .submit(&[&wgpu_command_buffer], &[], (&mut fence, 1))
-            })?;
-        }
+        // let mut fence = unsafe {
+        //     self.device
+        //         .wgpu_device()
+        //         .as_hal::<VkApi, _, _>(|d| d.unwrap().create_fence())?
+        // };
+
+        // unsafe {
+        //     self.device.wgpu_queue().as_hal::<VkApi, _, _>(|q| {
+        //         q.unwrap()
+        //             .submit(&[&wgpu_command_buffer], &[], (&mut fence, 1))
+        //     })?;
+        // }
 
         Ok(ConvertState {
-            image: self.image.clone(),
-            _view: view,
-            _encoder: command_encoder,
-            fence,
-            _buffer: wgpu_command_buffer,
+            // image: self.image.clone(),
+            // _view: view,
+            // _encoder: command_encoder,
+            // fence,
+            // _buffer: wgpu_command_buffer,
         })
     }
 }
 
 pub(crate) struct ConvertState {
-    _buffer: wgpu::hal::vulkan::CommandBuffer,
-    _encoder: wgpu::CommandEncoder,
-    pub(crate) fence: wgpu::hal::vulkan::Fence,
-    pub(crate) image: Arc<Mutex<Image>>,
-    pub(crate) _view: ImageView,
+    // _buffer: wgpu::hal::vulkan::CommandBuffer,
+    // _encoder: wgpu::CommandEncoder,
+    // pub(crate) fence: wgpu::hal::vulkan::Fence,
+    // pub(crate) image: Arc<Mutex<Image>>,
+    // pub(crate) _view: ImageView,
 }
 
 struct ShaderInfo {
