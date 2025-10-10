@@ -5,6 +5,7 @@ use ash::vk;
 use h264_reader::nal::{pps::PicParameterSet, sps::SeqParameterSet};
 use session_resources::VideoSessionResources;
 use tracing::error;
+use wgpu::hal::vulkan::Api as VkApi;
 
 use crate::{
     RawFrameData,
@@ -706,7 +707,12 @@ impl VulkanDecoder<'_> {
         let image_clone = image.clone();
 
         let hal_texture = unsafe {
-            wgpu::hal::vulkan::Device::texture_from_raw(
+            let hal_device = self
+                .decoding_device
+                .wgpu_device()
+                .as_hal::<VkApi>()
+                .unwrap();
+            hal_device.texture_from_raw(
                 **image,
                 &wgpu::hal::TextureDescriptor {
                     label: Some("vulkan video output texture"),
@@ -734,7 +740,7 @@ impl VulkanDecoder<'_> {
         let wgpu_texture = unsafe {
             self.decoding_device
                 .wgpu_device
-                .create_texture_from_hal::<wgpu::hal::vulkan::Api>(
+                .create_texture_from_hal::<VkApi>(
                     hal_texture,
                     &wgpu::TextureDescriptor {
                         label: Some("vulkan video output texture"),

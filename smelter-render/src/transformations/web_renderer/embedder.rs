@@ -8,6 +8,7 @@ use crossbeam_channel::bounded;
 use log::error;
 use nalgebra_glm::Mat4;
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::WebEmbeddingMethod;
 use super::chromium_sender::ChromiumSenderError;
@@ -71,7 +72,10 @@ impl EmbeddingHelper {
             pending_downloads.push(self.copy_buffer_to_shmem(source_idx, size, buffer.clone()));
         }
 
-        self.wgpu_ctx.device.poll(wgpu::PollType::Wait)?;
+        self.wgpu_ctx.device.poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: Some(Duration::from_secs(60)),
+        })?;
 
         for pending in pending_downloads {
             pending()?;

@@ -175,7 +175,7 @@ fn download_wgpu_texture(
         },
     );
 
-    device.poll(wgpu::PollType::Wait).unwrap();
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
 
     let mut result = Vec::new();
     result.append(&mut y_rx.recv().unwrap());

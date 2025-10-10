@@ -88,9 +88,10 @@ impl WgpuCtx {
 
         scope.pop(&device)?;
 
-        device.on_uncaptured_error(Box::new(|e| {
-            error!("wgpu error: {:?}", e);
-        }));
+        // TODO:
+        // device.on_uncaptured_error(Box::new(|e| {
+        //     error!("wgpu error: {:?}", e);
+        // }));
 
         Ok(Self {
             mode,

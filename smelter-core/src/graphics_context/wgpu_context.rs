@@ -58,6 +58,7 @@ pub fn create_wgpu_graphics_ctx(
         required_features,
         memory_hints: wgpu::MemoryHints::default(),
         trace: wgpu::Trace::Off,
+        experimental_features: wgpu::ExperimentalFeatures::disabled(),
     }))?;
 
     Ok(GraphicsContext {

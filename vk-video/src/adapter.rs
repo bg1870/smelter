@@ -1,7 +1,7 @@
 use ash::vk;
 use std::{ffi::CStr, sync::Arc};
 use tracing::{debug, warn};
-use wgpu::hal::DynAdapter;
+use wgpu::hal::{DynAdapter, vulkan::Api as VkApi};
 
 use crate::{
     VulkanDevice, VulkanInitError, VulkanInstance,
@@ -40,9 +40,9 @@ impl<'a> VulkanAdapter<'a> {
 
         if let Some(surface) = compatible_surface {
             unsafe {
-                (*surface).as_hal::<wgpu::hal::vulkan::Api, _, _>(|surface| {
-                    surface.and_then(|surface| wgpu_adapter.adapter.surface_capabilities(surface))
-                })?
+                (*surface)
+                    .as_hal::<VkApi>()
+                    .and_then(|surface| wgpu_adapter.adapter.surface_capabilities(&*surface))?
             };
         }
 
