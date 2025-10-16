@@ -49,7 +49,7 @@ impl AudioEncoder for FdkAacEncoder {
         let info;
 
         unsafe {
-            check(fdk::aacEncOpen(&mut encoder as *mut _, 0, channels))?;
+            check(fdk::aacEncOpen(&raw mut encoder, 0, channels))?;
 
             check(fdk::aacEncoder_SetParam(
                 encoder,
@@ -173,10 +173,10 @@ impl FdkAacEncoder {
 
             let in_desc = fdk::AACENC_BufDesc {
                 numBufs: 1,
-                bufs: &mut in_buf as *mut _ as *mut *mut c_void,
-                bufferIdentifiers: &mut in_buf_ident as *mut _,
-                bufSizes: &mut in_buf_size as *mut _,
-                bufElSizes: &mut in_buf_el_size as *mut _,
+                bufs: &raw mut in_buf as *mut *mut c_void,
+                bufferIdentifiers: &raw mut in_buf_ident,
+                bufSizes: &raw mut in_buf_size,
+                bufElSizes: &raw mut in_buf_el_size,
             };
 
             let mut out_buf = self.output_buffer.as_mut_ptr();
@@ -186,10 +186,10 @@ impl FdkAacEncoder {
 
             let out_desc = fdk::AACENC_BufDesc {
                 numBufs: 1,
-                bufs: &mut out_buf as *mut _ as *mut *mut c_void,
-                bufferIdentifiers: &mut out_buf_ident as *mut _,
-                bufSizes: &mut out_buf_size as *mut _,
-                bufElSizes: &mut out_buf_el_size as *mut _,
+                bufs: &raw mut out_buf as *mut *mut c_void,
+                bufferIdentifiers: &raw mut out_buf_ident,
+                bufSizes: &raw mut out_buf_size,
+                bufElSizes: &raw mut out_buf_el_size,
             };
 
             let mut out_args;
@@ -263,7 +263,7 @@ impl FdkAacEncoder {
 impl Drop for FdkAacEncoder {
     fn drop(&mut self) {
         unsafe {
-            fdk::aacEncClose(&mut self.encoder as *mut _);
+            fdk::aacEncClose(&raw mut self.encoder);
         }
     }
 }

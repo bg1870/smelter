@@ -217,7 +217,7 @@ impl NativeEncodeProfileCapabilities {
 
         let mut h264_encode_caps = vk::VideoEncodeH264CapabilitiesKHR::default();
         let mut encode_caps = vk::VideoEncodeCapabilitiesKHR {
-            p_next: (&mut h264_encode_caps as *mut _) as *mut c_void,
+            p_next: (&raw mut h264_encode_caps) as *mut c_void,
             ..Default::default()
         };
         let mut caps = vk::VideoCapabilitiesKHR::default().push_next(&mut encode_caps);
@@ -431,7 +431,7 @@ impl DecodeCapabilities {
 
         let mut h264_decode_caps = vk::VideoDecodeH264CapabilitiesKHR::default();
         let mut decode_caps = vk::VideoDecodeCapabilitiesKHR {
-            p_next: (&mut h264_decode_caps as *mut _) as *mut c_void, // why does this not have `.push_next()`? wtf
+            p_next: (&raw mut h264_decode_caps) as *mut c_void, // why does this not have `.push_next()`? wtf
             ..Default::default()
         };
 
