@@ -47,6 +47,7 @@ pub struct Device {
     pub video_queue_ext: ash::khr::video_queue::Device,
     pub video_decode_queue_ext: ash::khr::video_decode_queue::Device,
     pub video_encode_queue_ext: ash::khr::video_encode_queue::Device,
+    pub external_memory_fd: ash::khr::external_memory_fd::Device,
     pub _instance: Arc<Instance>,
 }
 

@@ -286,9 +286,9 @@ impl std::ops::Deref for Buffer {
 
 pub struct Image {
     pub image: vk::Image,
-    allocation: vk_mem::Allocation,
-    allocator: Arc<Allocator>,
-    pool: Option<vk_mem::AllocatorPool>,
+    pub allocation: vk_mem::Allocation,
+    pub allocator: Arc<Allocator>,
+    pub pool: Option<vk_mem::AllocatorPool>,
     pub device: Arc<Device>,
     pub layout: Box<[vk::ImageLayout]>,
     pub extent: vk::Extent3D,

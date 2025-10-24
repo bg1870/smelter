@@ -157,11 +157,15 @@ impl VulkanDevice {
         let video_encode_queue_ext =
             ash::khr::video_encode_queue::Device::new(&instance.instance, &device);
 
+        let external_memory_fd =
+            ash::khr::external_memory_fd::Device::new(&instance.instance, &device);
+
         let device = Arc::new(Device {
             device,
             video_queue_ext,
             video_decode_queue_ext,
             video_encode_queue_ext,
+            external_memory_fd,
             _instance: instance.instance.clone(),
         });
 
