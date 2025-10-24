@@ -19,7 +19,7 @@ use crate::{
 };
 
 mod encode_parameter_sets;
-pub(crate) mod yuv_converter;
+pub mod yuv_converter;
 
 const MB: u64 = 1024 * 1024;
 
@@ -155,10 +155,10 @@ impl VideoSessionResources<'_> {
     }
 }
 
-pub(crate) type H264EncodeProfileInfo<'a> = ProfileInfo<'a, vk::VideoEncodeH264ProfileInfoKHR<'a>>;
+pub type H264EncodeProfileInfo<'a> = ProfileInfo<'a, vk::VideoEncodeH264ProfileInfoKHR<'a>>;
 
 impl H264EncodeProfileInfo<'_> {
-    pub(crate) fn new_encode(profile: H264Profile) -> Self {
+    pub fn new_encode(profile: H264Profile) -> Self {
         let h264_profile =
             vk::VideoEncodeH264ProfileInfoKHR::default().std_profile_idc(profile.to_profile_idc());
 
@@ -185,7 +185,7 @@ impl std::ops::Deref for EncodingQueryPool {
 }
 
 impl EncodingQueryPool {
-    pub(crate) fn new(
+    pub fn new(
         encoding_device: &EncodingDevice,
         profile: H264Profile,
         profile_info: vk::VideoProfileInfoKHR,
@@ -221,7 +221,7 @@ impl EncodingQueryPool {
         Ok(Self { pool })
     }
 
-    pub(crate) fn get_result_blocking(&self) -> Result<EncodeFeedback, VulkanEncoderError> {
+    pub fn get_result_blocking(&self) -> Result<EncodeFeedback, VulkanEncoderError> {
         let mut result = [EncodeFeedback {
             offset: 0,
             bytes_written: 0,
@@ -285,14 +285,14 @@ impl CommandPools {
     }
 }
 
-pub(crate) enum EncoderTrackerWaitState {
+pub enum EncoderTrackerWaitState {
     InitializeEncoder,
     CopyBufferToImage,
     Convert,
     Encode,
 }
 
-pub(crate) type EncoderTracker = Tracker<EncoderTrackerWaitState>;
+pub type EncoderTracker = Tracker<EncoderTrackerWaitState>;
 
 pub struct VulkanEncoder<'a> {
     command_buffers: CommandBuffers,
@@ -316,20 +316,20 @@ pub struct VulkanEncoder<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct FullEncoderParameters {
-    pub(crate) idr_period: NonZeroU32,
-    pub(crate) width: NonZeroU32,
-    pub(crate) height: NonZeroU32,
-    pub(crate) rate_control: RateControl,
-    pub(crate) max_references: NonZeroU32,
-    pub(crate) profile: H264Profile,
-    pub(crate) quality_level: u32,
-    pub(crate) framerate: Rational,
+    pub idr_period: NonZeroU32,
+    pub width: NonZeroU32,
+    pub height: NonZeroU32,
+    pub rate_control: RateControl,
+    pub max_references: NonZeroU32,
+    pub profile: H264Profile,
+    pub quality_level: u32,
+    pub framerate: Rational,
 }
 
 impl VulkanEncoder<'_> {
     const OUTPUT_BUFFER_LEN: u64 = 4 * MB;
 
-    pub(crate) fn new_with_converter(
+    pub fn new_with_converter(
         device: Arc<EncodingDevice>,
         parameters: FullEncoderParameters,
     ) -> Result<Self, VulkanEncoderError> {
@@ -348,7 +348,7 @@ impl VulkanEncoder<'_> {
         Ok(enc)
     }
 
-    pub(crate) fn new(
+    pub fn new(
         encoding_device: Arc<EncodingDevice>,
         parameters: FullEncoderParameters,
     ) -> Result<Self, VulkanEncoderError> {
@@ -1168,7 +1168,7 @@ pub enum RateControl {
 }
 
 impl RateControl {
-    pub(crate) fn to_vk(self) -> vk::VideoEncodeRateControlModeFlagsKHR {
+    pub fn to_vk(self) -> vk::VideoEncodeRateControlModeFlagsKHR {
         match self {
             RateControl::EncoderDefault => vk::VideoEncodeRateControlModeFlagsKHR::DEFAULT,
             RateControl::Vbr { .. } => vk::VideoEncodeRateControlModeFlagsKHR::VBR,

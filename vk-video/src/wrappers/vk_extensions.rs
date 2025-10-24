@@ -1,6 +1,6 @@
 use ash::{RawPtr, prelude::VkResult, vk};
 
-pub(crate) trait VideoQueueExt {
+pub trait VideoQueueExt {
     unsafe fn cmd_begin_video_coding_khr(
         &self,
         command_buffer: vk::CommandBuffer,
@@ -209,7 +209,7 @@ impl VideoQueueExt for ash::khr::video_queue::Device {
     }
 }
 
-pub(crate) trait VideoDecodeQueueExt {
+pub trait VideoDecodeQueueExt {
     unsafe fn cmd_decode_video_khr(
         &self,
         command_buffer: vk::CommandBuffer,
@@ -227,7 +227,7 @@ impl VideoDecodeQueueExt for ash::khr::video_decode_queue::Device {
     }
 }
 
-pub(crate) trait VideoEncodeQueueExt {
+pub trait VideoEncodeQueueExt {
     unsafe fn get_encoded_video_session_parameters_khr(
         &self,
         video_session_parameters_info: &vk::VideoEncodeSessionParametersGetInfoKHR,

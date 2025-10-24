@@ -4,7 +4,7 @@ use bytes::{BufMut, BytesMut};
 use memchr::memmem::Finder;
 
 #[derive(Debug, Default)]
-pub(crate) struct NALUSplitter {
+pub struct NALUSplitter {
     buffer: BytesMut,
     pts: Option<u64>,
     previous_search_end: usize,
@@ -32,7 +32,7 @@ fn find_start_of_next_nalu(buf: &[u8]) -> Option<usize> {
 }
 
 impl NALUSplitter {
-    pub(crate) fn push(
+    pub fn push(
         &mut self,
         bytestream: &[u8],
         pts: Option<u64>,

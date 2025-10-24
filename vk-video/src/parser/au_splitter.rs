@@ -5,12 +5,12 @@ use crate::parser::nalu_parser::ParsedNalu;
 use super::nalu_parser::Slice;
 
 #[derive(Default)]
-pub(crate) struct AUSplitter {
+pub struct AUSplitter {
     buffered_nals: Vec<(ParsedNalu, Option<u64>)>,
 }
 
 impl AUSplitter {
-    pub(crate) fn put_nalu(
+    pub fn put_nalu(
         &mut self,
         nalu: ParsedNalu,
         pts: Option<u64>,

@@ -6,14 +6,14 @@ use crate::{VulkanCommonError, VulkanDevice, device::queues::Queue};
 
 use super::{CommandBuffer, Device, Image, ImageView, MemoryAllocation, VideoQueueExt};
 
-pub(crate) struct VideoSessionParameters {
-    pub(crate) parameters: vk::VideoSessionParametersKHR,
+pub struct VideoSessionParameters {
+    pub parameters: vk::VideoSessionParametersKHR,
     update_sequence_count: u32,
     device: Arc<Device>,
 }
 
 impl VideoSessionParameters {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<Device>,
         session: vk::VideoSessionKHR,
         initial_sps: &[vk::native::StdVideoH264SequenceParameterSet],
@@ -72,7 +72,7 @@ impl VideoSessionParameters {
         })
     }
 
-    pub(crate) fn add(
+    pub fn add(
         &mut self,
         sps: &[vk::native::StdVideoH264SequenceParameterSet],
         pps: &[vk::native::StdVideoH264PictureParameterSet],
@@ -106,17 +106,17 @@ impl Drop for VideoSessionParameters {
     }
 }
 
-pub(crate) struct VideoSession {
-    pub(crate) session: vk::VideoSessionKHR,
-    pub(crate) device: Arc<Device>,
-    pub(crate) _allocations: Vec<MemoryAllocation>,
-    pub(crate) max_coded_extent: vk::Extent2D,
-    pub(crate) max_dpb_slots: u32,
+pub struct VideoSession {
+    pub session: vk::VideoSessionKHR,
+    pub device: Arc<Device>,
+    pub _allocations: Vec<MemoryAllocation>,
+    pub max_coded_extent: vk::Extent2D,
+    pub max_dpb_slots: u32,
 }
 
 impl VideoSession {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         vulkan_ctx: &VulkanDevice,
         queue: &Queue,
         profile_info: &vk::VideoProfileInfoKHR,
@@ -249,7 +249,7 @@ impl From<crate::parser::PictureInfo> for vk::native::StdVideoDecodeH264Referenc
     }
 }
 
-pub(crate) enum ImageWithView {
+pub enum ImageWithView {
     Single {
         image: Arc<Mutex<Image>>,
         image_view: ImageView,
@@ -269,7 +269,7 @@ impl ImageWithView {
         }
     }
 
-    pub(crate) fn target_info(&self, index: usize) -> Arc<Mutex<Image>> {
+    pub fn target_info(&self, index: usize) -> Arc<Mutex<Image>> {
         match self {
             ImageWithView::Single { image, .. } => image.clone(),
             ImageWithView::Multiple { images, .. } => images[index].clone(),
@@ -297,14 +297,14 @@ impl ImageWithView {
     }
 }
 
-pub(crate) struct CodingImageBundle<'a> {
-    pub(crate) image_with_view: ImageWithView,
-    pub(crate) video_resource_info: Vec<vk::VideoPictureResourceInfoKHR<'a>>,
+pub struct CodingImageBundle<'a> {
+    pub image_with_view: ImageWithView,
+    pub video_resource_info: Vec<vk::VideoPictureResourceInfoKHR<'a>>,
 }
 
 impl<'a> CodingImageBundle<'a> {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         vulkan_ctx: &VulkanDevice,
         command_buffer: &CommandBuffer,
         format: &vk::VideoFormatPropertiesKHR<'a>,
@@ -459,20 +459,20 @@ impl<'a> CodingImageBundle<'a> {
         })
     }
 
-    pub(crate) fn extent(&self) -> vk::Extent3D {
+    pub fn extent(&self) -> vk::Extent3D {
         self.image_with_view.extent()
     }
 }
 
-pub(crate) struct DecodedPicturesBuffer<'a> {
-    pub(crate) image: CodingImageBundle<'a>,
-    pub(crate) slot_active_bitmap: u32,
-    pub(crate) len: u8,
+pub struct DecodedPicturesBuffer<'a> {
+    pub image: CodingImageBundle<'a>,
+    pub slot_active_bitmap: u32,
+    pub len: u8,
 }
 
 impl<'a> DecodedPicturesBuffer<'a> {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         vulkan_ctx: &VulkanDevice,
         command_buffer: &CommandBuffer,
         use_separate_images: bool,
@@ -508,7 +508,7 @@ impl<'a> DecodedPicturesBuffer<'a> {
         })
     }
 
-    pub(crate) fn reference_slot_info(&self) -> Vec<vk::VideoReferenceSlotInfoKHR<'_>> {
+    pub fn reference_slot_info(&self) -> Vec<vk::VideoReferenceSlotInfoKHR<'_>> {
         self.image
             .video_resource_info
             .iter()
@@ -521,7 +521,7 @@ impl<'a> DecodedPicturesBuffer<'a> {
             .collect()
     }
 
-    pub(crate) fn allocate_reference_picture(&mut self) -> Result<usize, VulkanCommonError> {
+    pub fn allocate_reference_picture(&mut self) -> Result<usize, VulkanCommonError> {
         let i = self.slot_active_bitmap.trailing_ones();
 
         if i >= self.len.into() {
@@ -533,7 +533,7 @@ impl<'a> DecodedPicturesBuffer<'a> {
         Ok(i as usize)
     }
 
-    pub(crate) fn video_resource_info(
+    pub fn video_resource_info(
         &self,
         i: usize,
     ) -> Option<&vk::VideoPictureResourceInfoKHR<'_>> {
@@ -541,17 +541,17 @@ impl<'a> DecodedPicturesBuffer<'a> {
     }
 
     #[inline(always)]
-    pub(crate) fn free_reference_picture(&mut self, i: usize) {
+    pub fn free_reference_picture(&mut self, i: usize) {
         self.slot_active_bitmap &= !(1 << i);
     }
 
     #[inline(always)]
-    pub(crate) fn reset_all_allocations(&mut self) {
+    pub fn reset_all_allocations(&mut self) {
         self.slot_active_bitmap = 0;
     }
 
     #[inline(always)]
-    pub(crate) fn slot_active(&self, i: usize) -> bool {
+    pub fn slot_active(&self, i: usize) -> bool {
         self.slot_active_bitmap & (1 << i) != 0
     }
 }

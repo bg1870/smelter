@@ -5,11 +5,11 @@ use crate::H264Profile;
 use super::VulkanEncoderError;
 
 const MACROBLOCK_SIZE: u32 = 16;
-pub(crate) const MAX_FRAME_NUM: u32 = 1 << 7;
+pub const MAX_FRAME_NUM: u32 = 1 << 7;
 const LOG2_MAX_FRAME_NUM_MINUS_4: u8 = (MAX_FRAME_NUM.ilog2() as u8) - 4;
 
 #[allow(non_snake_case)]
-pub(crate) fn sps(
+pub fn sps(
     profile: H264Profile,
     width: u32,
     height: u32,
@@ -69,7 +69,7 @@ pub(crate) fn sps(
     })
 }
 
-pub(crate) fn pps() -> vk::native::StdVideoH264PictureParameterSet {
+pub fn pps() -> vk::native::StdVideoH264PictureParameterSet {
     vk::native::StdVideoH264PictureParameterSet {
         flags: vk::native::StdVideoH264PpsFlags {
             __bindgen_padding_0: [0; 3],

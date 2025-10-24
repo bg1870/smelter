@@ -6,13 +6,13 @@ use crate::{VulkanCommonError, VulkanDevice};
 
 use super::Device;
 
-pub(crate) struct CommandPool {
-    pub(crate) command_pool: vk::CommandPool,
-    pub(crate) device: Arc<VulkanDevice>,
+pub struct CommandPool {
+    pub command_pool: vk::CommandPool,
+    pub device: Arc<VulkanDevice>,
 }
 
 impl CommandPool {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<VulkanDevice>,
         queue_family_index: usize,
     ) -> Result<Self, VulkanCommonError> {
@@ -47,13 +47,13 @@ impl std::ops::Deref for CommandPool {
     }
 }
 
-pub(crate) struct CommandBuffer {
-    pub(crate) pool: Arc<CommandPool>,
-    pub(crate) buffer: vk::CommandBuffer,
+pub struct CommandBuffer {
+    pub pool: Arc<CommandPool>,
+    pub buffer: vk::CommandBuffer,
 }
 
 impl CommandBuffer {
-    pub(crate) fn new_primary(pool: Arc<CommandPool>) -> Result<Self, VulkanCommonError> {
+    pub fn new_primary(pool: Arc<CommandPool>) -> Result<Self, VulkanCommonError> {
         let allocate_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(**pool)
             .level(vk::CommandBufferLevel::PRIMARY)
@@ -68,7 +68,7 @@ impl CommandBuffer {
         Ok(Self { pool, buffer })
     }
 
-    pub(crate) fn begin(&self) -> Result<(), VulkanCommonError> {
+    pub fn begin(&self) -> Result<(), VulkanCommonError> {
         unsafe {
             self.device().begin_command_buffer(
                 self.buffer,
@@ -79,13 +79,13 @@ impl CommandBuffer {
         Ok(())
     }
 
-    pub(crate) fn end(&self) -> Result<(), VulkanCommonError> {
+    pub fn end(&self) -> Result<(), VulkanCommonError> {
         unsafe { self.device().end_command_buffer(self.buffer)? };
 
         Ok(())
     }
 
-    pub(crate) fn device(&self) -> &Device {
+    pub fn device(&self) -> &Device {
         &self.pool.device.device
     }
 }

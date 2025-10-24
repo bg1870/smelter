@@ -6,13 +6,13 @@ use crate::{VulkanCommonError, wrappers::ImageView};
 
 use super::Device;
 
-pub(crate) struct ShaderModule {
+pub struct ShaderModule {
     device: Arc<Device>,
-    pub(crate) module: vk::ShaderModule,
+    pub module: vk::ShaderModule,
 }
 
 impl ShaderModule {
-    pub(crate) fn new(device: Arc<Device>, code: &[u32]) -> Result<Self, VulkanCommonError> {
+    pub fn new(device: Arc<Device>, code: &[u32]) -> Result<Self, VulkanCommonError> {
         let module = unsafe {
             device.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None)?
         };
@@ -27,13 +27,13 @@ impl Drop for ShaderModule {
     }
 }
 
-pub(crate) struct DescriptorSetLayout {
+pub struct DescriptorSetLayout {
     device: Arc<Device>,
-    pub(crate) set_layout: vk::DescriptorSetLayout,
+    pub set_layout: vk::DescriptorSetLayout,
 }
 
 impl DescriptorSetLayout {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<Device>,
         create_info: &vk::DescriptorSetLayoutCreateInfo,
     ) -> Result<Self, VulkanCommonError> {
@@ -52,13 +52,13 @@ impl Drop for DescriptorSetLayout {
     }
 }
 
-pub(crate) struct PipelineLayout {
+pub struct PipelineLayout {
     device: Arc<Device>,
-    pub(crate) pipeline_layout: vk::PipelineLayout,
+    pub pipeline_layout: vk::PipelineLayout,
 }
 
 impl PipelineLayout {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<Device>,
         create_info: &vk::PipelineLayoutCreateInfo,
     ) -> Result<Self, VulkanCommonError> {
@@ -80,13 +80,13 @@ impl Drop for PipelineLayout {
     }
 }
 
-pub(crate) struct RenderPass {
+pub struct RenderPass {
     device: Arc<Device>,
-    pub(crate) render_pass: vk::RenderPass,
+    pub render_pass: vk::RenderPass,
 }
 
 impl RenderPass {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<Device>,
         create_info: &vk::RenderPassCreateInfo,
     ) -> Result<Self, VulkanCommonError> {
@@ -109,15 +109,15 @@ impl Drop for RenderPass {
     }
 }
 
-pub(crate) struct Pipeline {
-    pub(crate) pipeline: vk::Pipeline,
+pub struct Pipeline {
+    pub pipeline: vk::Pipeline,
     _render_pass: Arc<RenderPass>,
     _layout: Arc<PipelineLayout>,
     device: Arc<Device>,
 }
 
 impl Pipeline {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<Device>,
         render_pass: Arc<RenderPass>,
         layout: Arc<PipelineLayout>,
@@ -150,15 +150,15 @@ impl Drop for Pipeline {
     }
 }
 
-pub(crate) struct Framebuffer {
-    pub(crate) framebuffer: vk::Framebuffer,
+pub struct Framebuffer {
+    pub framebuffer: vk::Framebuffer,
     _attachments: Vec<Arc<ImageView>>,
     _render_pass: Arc<RenderPass>,
     device: Arc<Device>,
 }
 
 impl Framebuffer {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<Device>,
         render_pass: Arc<RenderPass>,
         attachments: Vec<Arc<ImageView>>,
@@ -183,13 +183,13 @@ impl Drop for Framebuffer {
     }
 }
 
-pub(crate) struct Sampler {
-    pub(crate) sampler: vk::Sampler,
+pub struct Sampler {
+    pub sampler: vk::Sampler,
     device: Arc<Device>,
 }
 
 impl Sampler {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<Device>,
         create_info: &vk::SamplerCreateInfo,
     ) -> Result<Self, VulkanCommonError> {
@@ -207,13 +207,13 @@ impl Drop for Sampler {
     }
 }
 
-pub(crate) struct DescriptorPool {
-    pub(crate) pool: vk::DescriptorPool,
+pub struct DescriptorPool {
+    pub pool: vk::DescriptorPool,
     device: Arc<Device>,
 }
 
 impl DescriptorPool {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<Device>,
         create_info: &vk::DescriptorPoolCreateInfo,
     ) -> Result<Self, VulkanCommonError> {

@@ -6,23 +6,23 @@ use crate::VulkanCommonError;
 use crate::wrappers::*;
 
 #[derive(Clone)]
-pub(crate) struct Queue {
-    pub(crate) queue: Arc<Mutex<vk::Queue>>,
-    pub(crate) idx: usize,
-    pub(crate) _video_properties: vk::QueueFamilyVideoPropertiesKHR<'static>,
-    pub(crate) query_result_status_properties:
+pub struct Queue {
+    pub queue: Arc<Mutex<vk::Queue>>,
+    pub idx: usize,
+    pub _video_properties: vk::QueueFamilyVideoPropertiesKHR<'static>,
+    pub query_result_status_properties:
         vk::QueueFamilyQueryResultStatusPropertiesKHR<'static>,
-    pub(crate) device: Arc<Device>,
+    pub device: Arc<Device>,
 }
 
 impl Queue {
-    pub(crate) fn supports_result_status_queries(&self) -> bool {
+    pub fn supports_result_status_queries(&self) -> bool {
         self.query_result_status_properties
             .query_result_status_support
             == vk::TRUE
     }
 
-    pub(crate) fn submit_chain_semaphore<S>(
+    pub fn submit_chain_semaphore<S>(
         &self,
         buffer: &CommandBuffer,
         tracker: &mut Tracker<S>,
@@ -74,28 +74,28 @@ impl Queue {
     }
 }
 
-pub(crate) struct Queues {
-    pub(crate) transfer: Queue,
-    pub(crate) h264_decode: Option<Queue>,
-    pub(crate) h264_encode: Option<Queue>,
-    pub(crate) wgpu: Queue,
+pub struct Queues {
+    pub transfer: Queue,
+    pub h264_decode: Option<Queue>,
+    pub h264_encode: Option<Queue>,
+    pub wgpu: Queue,
 }
 
-pub(crate) struct QueueIndex<'a> {
-    pub(crate) idx: usize,
-    pub(crate) video_properties: vk::QueueFamilyVideoPropertiesKHR<'a>,
-    pub(crate) query_result_status_properties: vk::QueueFamilyQueryResultStatusPropertiesKHR<'a>,
+pub struct QueueIndex<'a> {
+    pub idx: usize,
+    pub video_properties: vk::QueueFamilyVideoPropertiesKHR<'a>,
+    pub query_result_status_properties: vk::QueueFamilyQueryResultStatusPropertiesKHR<'a>,
 }
 
-pub(crate) struct QueueIndices<'a> {
-    pub(crate) transfer: QueueIndex<'a>,
-    pub(crate) h264_decode: Option<QueueIndex<'a>>,
-    pub(crate) h264_encode: Option<QueueIndex<'a>>,
-    pub(crate) graphics_transfer_compute: QueueIndex<'a>,
+pub struct QueueIndices<'a> {
+    pub transfer: QueueIndex<'a>,
+    pub h264_decode: Option<QueueIndex<'a>>,
+    pub h264_encode: Option<QueueIndex<'a>>,
+    pub graphics_transfer_compute: QueueIndex<'a>,
 }
 
 impl QueueIndices<'_> {
-    pub(crate) fn queue_create_infos(&self) -> Vec<vk::DeviceQueueCreateInfo<'_>> {
+    pub fn queue_create_infos(&self) -> Vec<vk::DeviceQueueCreateInfo<'_>> {
         [
             self.h264_decode.as_ref().map(|q| q.idx),
             self.h264_encode.as_ref().map(|q| q.idx),

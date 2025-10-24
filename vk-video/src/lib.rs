@@ -80,7 +80,7 @@ mod instance;
 mod parser;
 mod vulkan_decoder;
 mod vulkan_encoder;
-pub(crate) mod wrappers;
+pub mod wrappers;
 
 use ash::vk;
 use parser::Parser;
@@ -166,7 +166,7 @@ pub enum H264Profile {
 }
 
 impl H264Profile {
-    pub(crate) fn to_profile_idc(self) -> vk::native::StdVideoH264ProfileIdc {
+    pub fn to_profile_idc(self) -> vk::native::StdVideoH264ProfileIdc {
         match self {
             H264Profile::Baseline => {
                 vk::native::StdVideoH264ProfileIdc_STD_VIDEO_H264_PROFILE_IDC_BASELINE

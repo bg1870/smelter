@@ -15,9 +15,9 @@ use crate::{
 /// Represents handle to a physical device.
 /// Can be used to create [`VulkanDevice`].
 pub struct VulkanAdapter<'a> {
-    pub(crate) instance: &'a VulkanInstance,
-    pub(crate) device_candidate: DeviceCandidate,
-    pub(crate) info: AdapterInfo,
+    pub instance: &'a VulkanInstance,
+    pub device_candidate: DeviceCandidate,
+    pub info: AdapterInfo,
 }
 
 impl<'a> VulkanAdapter<'a> {
@@ -215,12 +215,12 @@ pub struct AdapterInfo {
     pub supports_encoding: bool,
 }
 
-pub(crate) struct DeviceCandidate {
-    pub(crate) physical_device: vk::PhysicalDevice,
-    pub(crate) wgpu_adapter: wgpu::hal::ExposedAdapter<wgpu::hal::vulkan::Api>,
-    pub(crate) queue_indices: QueueIndices<'static>,
-    pub(crate) decode_capabilities: Option<NativeDecodeCapabilities>,
-    pub(crate) encode_capabilities: Option<NativeEncodeCapabilities>,
+pub struct DeviceCandidate {
+    pub physical_device: vk::PhysicalDevice,
+    pub wgpu_adapter: wgpu::hal::ExposedAdapter<wgpu::hal::vulkan::Api>,
+    pub queue_indices: QueueIndices<'static>,
+    pub decode_capabilities: Option<NativeDecodeCapabilities>,
+    pub encode_capabilities: Option<NativeEncodeCapabilities>,
 }
 
 /// This macro will iterate over the `p_next` chain of the base struct until it finds a struct,
@@ -251,7 +251,7 @@ macro_rules! find_ext {
     };
 }
 
-pub(crate) fn iter_adapters<'a>(
+pub fn iter_adapters<'a>(
     vulkan_instance: &'a VulkanInstance,
     compatible_surface: Option<&'a wgpu::Surface<'_>>,
 ) -> Result<impl Iterator<Item = VulkanAdapter<'a>> + 'a, VulkanInitError> {

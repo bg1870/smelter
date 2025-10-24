@@ -10,7 +10,7 @@ use nalu_parser::{NalReceiver, ParsedNalu};
 use nalu_splitter::NALUSplitter;
 use reference_manager::{ReferenceContext, ReferenceManagementError};
 
-pub(crate) use reference_manager::ReferenceId;
+pub use reference_manager::ReferenceId;
 
 mod au_splitter;
 mod nalu_parser;
@@ -21,36 +21,36 @@ mod reference_manager;
 #[derivative(Debug)]
 #[allow(non_snake_case)]
 pub struct DecodeInformation {
-    pub(crate) reference_list: Option<Vec<ReferencePictureInfo>>,
+    pub reference_list: Option<Vec<ReferencePictureInfo>>,
     #[derivative(Debug = "ignore")]
-    pub(crate) rbsp_bytes: Vec<u8>,
-    pub(crate) slice_indices: Vec<usize>,
+    pub rbsp_bytes: Vec<u8>,
+    pub slice_indices: Vec<usize>,
     #[derivative(Debug = "ignore")]
-    pub(crate) header: Arc<SliceHeader>,
-    pub(crate) sps_id: u8,
-    pub(crate) pps_id: u8,
-    pub(crate) picture_info: PictureInfo,
-    pub(crate) pts: Option<u64>,
+    pub header: Arc<SliceHeader>,
+    pub sps_id: u8,
+    pub pps_id: u8,
+    pub picture_info: PictureInfo,
+    pub pts: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy)]
 #[allow(non_snake_case)]
-pub(crate) struct ReferencePictureInfo {
-    pub(crate) id: ReferenceId,
-    pub(crate) LongTermPicNum: Option<u64>,
-    pub(crate) non_existing: bool,
-    pub(crate) FrameNum: u16,
-    pub(crate) PicOrderCnt: [i32; 2],
+pub struct ReferencePictureInfo {
+    pub id: ReferenceId,
+    pub LongTermPicNum: Option<u64>,
+    pub non_existing: bool,
+    pub FrameNum: u16,
+    pub PicOrderCnt: [i32; 2],
 }
 
 #[derive(Debug, Clone, Copy)]
 #[allow(non_snake_case)]
-pub(crate) struct PictureInfo {
-    pub(crate) used_for_long_term_reference: bool,
-    pub(crate) non_existing: bool,
-    pub(crate) FrameNum: u16,
-    pub(crate) PicOrderCnt_for_decoding: [i32; 2],
-    pub(crate) PicOrderCnt_as_reference_pic: [i32; 2],
+pub struct PictureInfo {
+    pub used_for_long_term_reference: bool,
+    pub non_existing: bool,
+    pub FrameNum: u16,
+    pub PicOrderCnt_for_decoding: [i32; 2],
+    pub PicOrderCnt_as_reference_pic: [i32; 2],
 }
 
 #[derive(Debug, Clone)]

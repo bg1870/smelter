@@ -6,9 +6,9 @@ use crate::{VulkanInitError, adapter::VulkanAdapter, wrappers::*};
 
 /// Context for all encoders and decoders. Also contains a [`wgpu::Instance`].
 pub struct VulkanInstance {
-    pub(crate) wgpu_instance: wgpu::Instance,
+    pub wgpu_instance: wgpu::Instance,
     _entry: Arc<Entry>,
-    pub(crate) instance: Arc<Instance>,
+    pub instance: Arc<Instance>,
     _debug_messenger: Option<DebugMessenger>,
 }
 

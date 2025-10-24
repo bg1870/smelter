@@ -7,7 +7,7 @@ use crate::VulkanDecoderError;
 use crate::VulkanInitError;
 use crate::wrappers::*;
 
-pub(crate) fn query_video_format_properties<'a>(
+pub fn query_video_format_properties<'a>(
     device: vk::PhysicalDevice,
     video_queue_instance_ext: &ash::khr::video_queue::Instance,
     profile_info: &vk::VideoProfileInfoKHR<'_>,
@@ -88,14 +88,14 @@ pub struct EncodeH264ProfileCapabilities {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NativeEncodeCapabilities {
-    pub(crate) baseline: Option<NativeEncodeProfileCapabilities>,
-    pub(crate) main: Option<NativeEncodeProfileCapabilities>,
-    pub(crate) high: Option<NativeEncodeProfileCapabilities>,
+pub struct NativeEncodeCapabilities {
+    pub baseline: Option<NativeEncodeProfileCapabilities>,
+    pub main: Option<NativeEncodeProfileCapabilities>,
+    pub high: Option<NativeEncodeProfileCapabilities>,
 }
 
 impl NativeEncodeCapabilities {
-    pub(crate) fn user_facing(&self) -> EncodeH264Capabilities {
+    pub fn user_facing(&self) -> EncodeH264Capabilities {
         EncodeH264Capabilities {
             baseline_profile: self
                 .baseline
@@ -112,7 +112,7 @@ impl NativeEncodeCapabilities {
         }
     }
 
-    pub(crate) fn query(instance: &Instance, device: vk::PhysicalDevice) -> Self {
+    pub fn query(instance: &Instance, device: vk::PhysicalDevice) -> Self {
         let baseline = NativeEncodeProfileCapabilities::query(
             instance,
             device,
@@ -139,7 +139,7 @@ impl NativeEncodeCapabilities {
         }
     }
 
-    pub(crate) fn profile(&self, profile: H264Profile) -> Option<&NativeEncodeProfileCapabilities> {
+    pub fn profile(&self, profile: H264Profile) -> Option<&NativeEncodeProfileCapabilities> {
         match profile {
             H264Profile::Baseline => self.baseline.as_ref(),
             H264Profile::Main => self.main.as_ref(),
@@ -147,7 +147,7 @@ impl NativeEncodeCapabilities {
         }
     }
 
-    pub(crate) fn max_profile(&self) -> H264Profile {
+    pub fn max_profile(&self) -> H264Profile {
         if self.high.is_some() {
             H264Profile::High
         } else if self.main.is_some() {
@@ -160,13 +160,13 @@ impl NativeEncodeCapabilities {
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub(crate) struct NativeEncodeProfileCapabilities {
-    pub(crate) video_capabilities: vk::VideoCapabilitiesKHR<'static>,
-    pub(crate) encode_capabilities: vk::VideoEncodeCapabilitiesKHR<'static>,
-    pub(crate) h264_encode_capabilities: vk::VideoEncodeH264CapabilitiesKHR<'static>,
-    pub(crate) encode_dpb_properties: Vec<vk::VideoFormatPropertiesKHR<'static>>,
-    pub(crate) encode_src_properties: Vec<vk::VideoFormatPropertiesKHR<'static>>,
-    pub(crate) quality_level_properties: Vec<NativeEncodeQualityLevelProperties>,
+pub struct NativeEncodeProfileCapabilities {
+    pub video_capabilities: vk::VideoCapabilitiesKHR<'static>,
+    pub encode_capabilities: vk::VideoEncodeCapabilitiesKHR<'static>,
+    pub h264_encode_capabilities: vk::VideoEncodeH264CapabilitiesKHR<'static>,
+    pub encode_dpb_properties: Vec<vk::VideoFormatPropertiesKHR<'static>>,
+    pub encode_src_properties: Vec<vk::VideoFormatPropertiesKHR<'static>>,
+    pub quality_level_properties: Vec<NativeEncodeQualityLevelProperties>,
 }
 
 impl NativeEncodeProfileCapabilities {
@@ -292,9 +292,9 @@ impl NativeEncodeProfileCapabilities {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NativeEncodeQualityLevelProperties {
-    pub(crate) quality_level_properties: vk::VideoEncodeQualityLevelPropertiesKHR<'static>,
-    pub(crate) h264_quality_level_properties: vk::VideoEncodeH264QualityLevelPropertiesKHR<'static>,
+pub struct NativeEncodeQualityLevelProperties {
+    pub quality_level_properties: vk::VideoEncodeQualityLevelPropertiesKHR<'static>,
+    pub h264_quality_level_properties: vk::VideoEncodeH264QualityLevelPropertiesKHR<'static>,
 }
 
 impl NativeEncodeQualityLevelProperties {
@@ -346,7 +346,7 @@ impl NativeEncodeQualityLevelProperties {
         })
     }
 
-    pub(crate) fn zeroed(&self) -> bool {
+    pub fn zeroed(&self) -> bool {
         // this is hideous
         self.quality_level_properties
             .preferred_rate_control_mode
@@ -433,14 +433,14 @@ pub struct DecodeH264ProfileCapabilities {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NativeDecodeCapabilities {
-    pub(crate) baseline: Option<NativeDecodeProfileCapabilities>,
-    pub(crate) main: Option<NativeDecodeProfileCapabilities>,
-    pub(crate) high: Option<NativeDecodeProfileCapabilities>,
+pub struct NativeDecodeCapabilities {
+    pub baseline: Option<NativeDecodeProfileCapabilities>,
+    pub main: Option<NativeDecodeProfileCapabilities>,
+    pub high: Option<NativeDecodeProfileCapabilities>,
 }
 
 impl NativeDecodeCapabilities {
-    pub(crate) fn user_facing(&self) -> DecodeH264Capabilities {
+    pub fn user_facing(&self) -> DecodeH264Capabilities {
         DecodeH264Capabilities {
             baseline_profile: self
                 .baseline
@@ -457,7 +457,7 @@ impl NativeDecodeCapabilities {
         }
     }
 
-    pub(crate) fn query(instance: &Instance, device: vk::PhysicalDevice) -> Self {
+    pub fn query(instance: &Instance, device: vk::PhysicalDevice) -> Self {
         let baseline = NativeDecodeProfileCapabilities::query(
             instance,
             device,
@@ -484,7 +484,7 @@ impl NativeDecodeCapabilities {
         }
     }
 
-    pub(crate) fn profile(&self, profile: H264Profile) -> Option<&NativeDecodeProfileCapabilities> {
+    pub fn profile(&self, profile: H264Profile) -> Option<&NativeDecodeProfileCapabilities> {
         match profile {
             H264Profile::Baseline => self.baseline.as_ref(),
             H264Profile::Main => self.main.as_ref(),
@@ -492,7 +492,7 @@ impl NativeDecodeCapabilities {
         }
     }
 
-    pub(crate) fn max_profile(&self) -> H264Profile {
+    pub fn max_profile(&self) -> H264Profile {
         if self.high.is_some() {
             H264Profile::High
         } else if self.main.is_some() {
@@ -504,17 +504,17 @@ impl NativeDecodeCapabilities {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NativeDecodeProfileCapabilities {
-    pub(crate) video_capabilities: vk::VideoCapabilitiesKHR<'static>,
+pub struct NativeDecodeProfileCapabilities {
+    pub video_capabilities: vk::VideoCapabilitiesKHR<'static>,
     #[allow(dead_code)]
-    pub(crate) decode_capabilities: vk::VideoDecodeCapabilitiesKHR<'static>,
-    pub(crate) h264_decode_capabilities: vk::VideoDecodeH264CapabilitiesKHR<'static>,
-    pub(crate) h264_dpb_format_properties: vk::VideoFormatPropertiesKHR<'static>,
-    pub(crate) h264_dst_format_properties: Option<vk::VideoFormatPropertiesKHR<'static>>,
+    pub decode_capabilities: vk::VideoDecodeCapabilitiesKHR<'static>,
+    pub h264_decode_capabilities: vk::VideoDecodeH264CapabilitiesKHR<'static>,
+    pub h264_dpb_format_properties: vk::VideoFormatPropertiesKHR<'static>,
+    pub h264_dst_format_properties: Option<vk::VideoFormatPropertiesKHR<'static>>,
 }
 
 impl NativeDecodeProfileCapabilities {
-    pub(crate) fn user_facing(&self) -> Result<DecodeH264ProfileCapabilities, VulkanDecoderError> {
+    pub fn user_facing(&self) -> Result<DecodeH264ProfileCapabilities, VulkanDecoderError> {
         Ok(DecodeH264ProfileCapabilities {
             min_width: self.video_capabilities.min_coded_extent.width,
             max_width: self.video_capabilities.max_coded_extent.width,
@@ -524,7 +524,7 @@ impl NativeDecodeProfileCapabilities {
         })
     }
 
-    pub(crate) fn query(
+    pub fn query(
         instance: &Instance,
         device: vk::PhysicalDevice,
         profile: vk::native::StdVideoH264ProfileIdc,

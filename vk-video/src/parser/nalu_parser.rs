@@ -11,7 +11,7 @@ use h264_reader::{
 
 use super::ParserError;
 
-pub(crate) struct NalReceiver {
+pub struct NalReceiver {
     parser_ctx: h264_reader::Context,
     sender: mpsc::Sender<Result<ParsedNalu, ParserError>>,
 }
@@ -30,7 +30,7 @@ impl AccumulatedNalHandler for NalReceiver {
 }
 
 impl NalReceiver {
-    pub(crate) fn new(sender: mpsc::Sender<Result<ParsedNalu, ParserError>>) -> Self {
+    pub fn new(sender: mpsc::Sender<Result<ParsedNalu, ParserError>>) -> Self {
         Self {
             sender,
             parser_ctx: Context::default(),
@@ -123,7 +123,7 @@ impl NalReceiver {
     }
 }
 
-pub(crate) trait SpsExt {
+pub trait SpsExt {
     fn max_frame_num(&self) -> i64;
 }
 

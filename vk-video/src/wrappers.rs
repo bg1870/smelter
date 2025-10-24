@@ -11,21 +11,21 @@ mod sync;
 mod video;
 mod vk_extensions;
 
-pub(crate) use command::*;
-pub(crate) use debug::*;
-pub(crate) use graphics::*;
-pub(crate) use mem::*;
-pub(crate) use parameter_sets::*;
-pub(crate) use sync::*;
-pub(crate) use video::*;
-pub(crate) use vk_extensions::*;
+pub use command::*;
+pub use debug::*;
+pub use graphics::*;
+pub use mem::*;
+pub use parameter_sets::*;
+pub use sync::*;
+pub use video::*;
+pub use vk_extensions::*;
 
-pub(crate) struct Instance {
-    pub(crate) instance: ash::Instance,
-    pub(crate) _entry: Arc<Entry>,
-    pub(crate) video_queue_instance_ext: ash::khr::video_queue::Instance,
-    pub(crate) video_encode_queue_instance_ext: ash::khr::video_encode_queue::Instance,
-    pub(crate) debug_utils_instance_ext: ash::ext::debug_utils::Instance,
+pub struct Instance {
+    pub instance: ash::Instance,
+    pub _entry: Arc<Entry>,
+    pub video_queue_instance_ext: ash::khr::video_queue::Instance,
+    pub video_encode_queue_instance_ext: ash::khr::video_encode_queue::Instance,
+    pub debug_utils_instance_ext: ash::ext::debug_utils::Instance,
 }
 
 impl Drop for Instance {
@@ -42,12 +42,12 @@ impl std::ops::Deref for Instance {
     }
 }
 
-pub(crate) struct Device {
-    pub(crate) device: ash::Device,
-    pub(crate) video_queue_ext: ash::khr::video_queue::Device,
-    pub(crate) video_decode_queue_ext: ash::khr::video_decode_queue::Device,
-    pub(crate) video_encode_queue_ext: ash::khr::video_encode_queue::Device,
-    pub(crate) _instance: Arc<Instance>,
+pub struct Device {
+    pub device: ash::Device,
+    pub video_queue_ext: ash::khr::video_queue::Device,
+    pub video_decode_queue_ext: ash::khr::video_decode_queue::Device,
+    pub video_encode_queue_ext: ash::khr::video_encode_queue::Device,
+    pub _instance: Arc<Instance>,
 }
 
 impl std::ops::Deref for Device {

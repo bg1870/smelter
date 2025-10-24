@@ -7,7 +7,7 @@ use crate::VulkanDecoderError;
 
 const MACROBLOCK_SIZE: u32 = 16;
 
-pub(crate) trait SeqParameterSetExt {
+pub trait SeqParameterSetExt {
     fn size(&self) -> Result<vk::Extent2D, VulkanDecoderError>;
 }
 
@@ -64,8 +64,8 @@ impl SeqParameterSetExt for SeqParameterSet {
     }
 }
 
-pub(crate) struct VkSequenceParameterSet {
-    pub(crate) sps: vk::native::StdVideoH264SequenceParameterSet,
+pub struct VkSequenceParameterSet {
+    pub sps: vk::native::StdVideoH264SequenceParameterSet,
 
     /// # Safety
     /// Do not modify this pointer or anything it points to
@@ -255,8 +255,8 @@ impl Drop for VkSequenceParameterSet {
 unsafe impl Send for VkSequenceParameterSet {}
 unsafe impl Sync for VkSequenceParameterSet {}
 
-pub(crate) struct H264ScalingLists {
-    pub(crate) list: vk::native::StdVideoH264ScalingLists,
+pub struct H264ScalingLists {
+    pub list: vk::native::StdVideoH264ScalingLists,
 }
 
 impl Default for H264ScalingLists {
@@ -347,7 +347,7 @@ impl ChromaFormatExt for h264_reader::nal::sps::ChromaFormat {
     }
 }
 
-pub(crate) fn vk_to_h264_level_idc(
+pub fn vk_to_h264_level_idc(
     level_idc: vk::native::StdVideoH264LevelIdc,
 ) -> Result<u8, VulkanDecoderError> {
     match level_idc {
@@ -378,7 +378,7 @@ pub(crate) fn vk_to_h264_level_idc(
 
 /// As per __Table A-1 Level limits__ in the H.264 spec
 /// `mbs` means macroblocks here
-pub(crate) fn h264_level_idc_to_max_dpb_mbs(level_idc: u8) -> Result<u64, VulkanDecoderError> {
+pub fn h264_level_idc_to_max_dpb_mbs(level_idc: u8) -> Result<u64, VulkanDecoderError> {
     match level_idc {
         10 => Ok(396),
         11 => Ok(900),
@@ -465,13 +465,13 @@ fn h264_profile_idc_to_vk(
 unsafe impl<'a, T: 'a + vk::ExtendsVideoProfileInfoKHR> Send for ProfileInfo<'a, T> {}
 unsafe impl<'a, T: 'a + vk::ExtendsVideoProfileInfoKHR> Sync for ProfileInfo<'a, T> {}
 
-pub(crate) struct ProfileInfo<'a, T: 'a + vk::ExtendsVideoProfileInfoKHR> {
-    pub(crate) profile_info: vk::VideoProfileInfoKHR<'a>,
+pub struct ProfileInfo<'a, T: 'a + vk::ExtendsVideoProfileInfoKHR> {
+    pub profile_info: vk::VideoProfileInfoKHR<'a>,
     additional_info_ptr: NonNull<T>,
 }
 
 impl<'a, T: vk::ExtendsVideoProfileInfoKHR> ProfileInfo<'a, T> {
-    pub(crate) fn new(profile_info: vk::VideoProfileInfoKHR<'a>, additional_info: T) -> Self {
+    pub fn new(profile_info: vk::VideoProfileInfoKHR<'a>, additional_info: T) -> Self {
         let additional_info = Box::leak(Box::new(additional_info));
         let additional_info_ptr = NonNull::from(&mut *additional_info);
         let profile_info = profile_info.push_next(additional_info);
@@ -491,7 +491,7 @@ impl<T: vk::ExtendsVideoProfileInfoKHR> Drop for ProfileInfo<'_, T> {
     }
 }
 
-pub(crate) type H264DecodeProfileInfo<'a> = ProfileInfo<'a, vk::VideoDecodeH264ProfileInfoKHR<'a>>;
+pub type H264DecodeProfileInfo<'a> = ProfileInfo<'a, vk::VideoDecodeH264ProfileInfoKHR<'a>>;
 
 impl PartialEq for H264DecodeProfileInfo<'_> {
     fn eq(&self, other: &Self) -> bool {
@@ -510,7 +510,7 @@ impl PartialEq for H264DecodeProfileInfo<'_> {
 impl Eq for H264DecodeProfileInfo<'_> {}
 
 impl H264DecodeProfileInfo<'_> {
-    pub(crate) fn from_sps_decode(sps: &SeqParameterSet) -> Result<Self, VulkanDecoderError> {
+    pub fn from_sps_decode(sps: &SeqParameterSet) -> Result<Self, VulkanDecoderError> {
         let profile_idc = h264_profile_idc_to_vk(sps.profile());
 
         if profile_idc == vk::native::StdVideoH264ProfileIdc_STD_VIDEO_H264_PROFILE_IDC_INVALID {
@@ -565,13 +565,13 @@ impl H264DecodeProfileInfo<'_> {
         Ok(ProfileInfo::new(profile_info, h264_profile_info))
     }
 
-    pub(crate) fn profile_idc(&self) -> vk::native::StdVideoH264ProfileIdc {
+    pub fn profile_idc(&self) -> vk::native::StdVideoH264ProfileIdc {
         unsafe { self.additional_info_ptr.as_ref().std_profile_idc }
     }
 }
 
-pub(crate) struct VkPictureParameterSet {
-    pub(crate) pps: vk::native::StdVideoH264PictureParameterSet,
+pub struct VkPictureParameterSet {
+    pub pps: vk::native::StdVideoH264PictureParameterSet,
     scaling_list_ptr: Option<NonNull<H264ScalingLists>>,
 }
 

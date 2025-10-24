@@ -15,8 +15,8 @@ use super::H264DecodeProfileInfo;
 /// Since `VideoSessionParameters` can only add sps and pps values (inserting sps or pps with an
 /// existing id is prohibited), this is an abstraction which provides the capability to replace an
 /// existing sps or pps.
-pub(crate) struct VideoSessionParametersManager {
-    pub(crate) parameters: VideoSessionParameters,
+pub struct VideoSessionParametersManager {
+    pub parameters: VideoSessionParameters,
     sps: HashMap<u8, VkSequenceParameterSet>,
     pps: HashMap<(u8, u8), VkPictureParameterSet>,
     device: Arc<Device>,
@@ -24,7 +24,7 @@ pub(crate) struct VideoSessionParametersManager {
 }
 
 impl VideoSessionParametersManager {
-    pub(crate) fn new(
+    pub fn new(
         vulkan_ctx: &VulkanDevice,
         session: vk::VideoSessionKHR,
     ) -> Result<Self, VulkanDecoderError> {
@@ -44,11 +44,11 @@ impl VideoSessionParametersManager {
         })
     }
 
-    pub(crate) fn parameters(&self) -> vk::VideoSessionParametersKHR {
+    pub fn parameters(&self) -> vk::VideoSessionParametersKHR {
         self.parameters.parameters
     }
 
-    pub(crate) fn change_session(
+    pub fn change_session(
         &mut self,
         session: vk::VideoSessionKHR,
     ) -> Result<(), VulkanDecoderError> {
@@ -68,7 +68,7 @@ impl VideoSessionParametersManager {
 
     // it is probably not optimal to insert sps and pps searately. this could be optimized, so that
     // the insertion happens lazily when the parameters are bound to a session.
-    pub(crate) fn put_sps(&mut self, sps: &SeqParameterSet) -> Result<(), VulkanDecoderError> {
+    pub fn put_sps(&mut self, sps: &SeqParameterSet) -> Result<(), VulkanDecoderError> {
         let key = sps.seq_parameter_set_id.id();
         match self.sps.entry(key) {
             std::collections::hash_map::Entry::Occupied(mut e) => {
@@ -93,7 +93,7 @@ impl VideoSessionParametersManager {
         Ok(())
     }
 
-    pub(crate) fn put_pps(&mut self, pps: &PicParameterSet) -> Result<(), VulkanDecoderError> {
+    pub fn put_pps(&mut self, pps: &PicParameterSet) -> Result<(), VulkanDecoderError> {
         let key = (pps.seq_parameter_set_id.id(), pps.pic_parameter_set_id.id());
         match self.pps.entry(key) {
             std::collections::hash_map::Entry::Occupied(mut e) => {
@@ -121,17 +121,17 @@ impl VideoSessionParametersManager {
 }
 
 #[derive(Clone)]
-pub(crate) struct SessionParams<'a> {
-    pub(crate) max_coded_extent: vk::Extent2D,
-    pub(crate) max_dpb_slots: u32,
-    pub(crate) max_active_references: u32,
-    pub(crate) max_num_reorder_frames: u64,
-    pub(crate) profile_info: Arc<H264DecodeProfileInfo<'a>>,
-    pub(crate) level_idc: u8,
+pub struct SessionParams<'a> {
+    pub max_coded_extent: vk::Extent2D,
+    pub max_dpb_slots: u32,
+    pub max_active_references: u32,
+    pub max_num_reorder_frames: u64,
+    pub profile_info: Arc<H264DecodeProfileInfo<'a>>,
+    pub level_idc: u8,
 }
 
 impl SessionParams<'_> {
-    pub(crate) fn combine(current_params: Self, new_params: Self) -> Self {
+    pub fn combine(current_params: Self, new_params: Self) -> Self {
         Self {
             max_coded_extent: vk::Extent2D {
                 width: u32::max(
@@ -159,7 +159,7 @@ impl SessionParams<'_> {
         }
     }
 
-    pub(crate) fn is_valid(&self, new_params: &Self) -> bool {
+    pub fn is_valid(&self, new_params: &Self) -> bool {
         self.max_coded_extent.width >= new_params.max_coded_extent.width
             && self.max_coded_extent.height >= new_params.max_coded_extent.height
             && self.max_dpb_slots >= new_params.max_dpb_slots

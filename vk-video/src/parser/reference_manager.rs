@@ -31,7 +31,7 @@ pub struct ReferenceId(usize);
 
 #[derive(Debug, Default)]
 #[allow(non_snake_case)]
-pub(crate) struct ReferenceContext {
+pub struct ReferenceContext {
     pictures: ReferencePictures,
     next_reference_id: ReferenceId,
     previous_frame_num: usize,
@@ -101,7 +101,7 @@ impl ReferenceContext {
         id
     }
 
-    pub(crate) fn put_picture(
+    pub fn put_picture(
         &mut self,
         mut slices: Vec<(Slice, Option<u64>)>,
     ) -> Result<Vec<DecoderInstruction>, ReferenceManagementError> {

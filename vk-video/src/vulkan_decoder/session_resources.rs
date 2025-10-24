@@ -22,14 +22,14 @@ mod images;
 mod parameters;
 
 pub(super) struct VideoSessionResources<'a> {
-    pub(crate) video_session: VideoSession,
-    pub(crate) parameters: SessionParams<'a>,
-    pub(crate) parameters_manager: VideoSessionParametersManager,
-    pub(crate) decoding_images: DecodingImages<'a>,
-    pub(crate) sps: HashMap<u8, SeqParameterSet>,
-    pub(crate) pps: HashMap<(u8, u8), PicParameterSet>,
-    pub(crate) decode_query_pool: Option<DecodingQueryPool>,
-    pub(crate) decode_buffer: DecodeInputBuffer,
+    pub video_session: VideoSession,
+    pub parameters: SessionParams<'a>,
+    pub parameters_manager: VideoSessionParametersManager,
+    pub decoding_images: DecodingImages<'a>,
+    pub sps: HashMap<u8, SeqParameterSet>,
+    pub pps: HashMap<(u8, u8), PicParameterSet>,
+    pub decode_query_pool: Option<DecodingQueryPool>,
+    pub decode_buffer: DecodeInputBuffer,
     parameters_scheduled_for_reset: Option<SessionParams<'a>>,
 }
 
@@ -59,7 +59,7 @@ fn calculate_max_num_reorder_frames(sps: &SeqParameterSet) -> Result<u64, Vulkan
 }
 
 impl VideoSessionResources<'_> {
-    pub(crate) fn new_from_sps(
+    pub fn new_from_sps(
         decoding_device: &DecodingDevice,
         decode_buffer: &CommandBuffer,
         sps: SeqParameterSet,
@@ -153,7 +153,7 @@ impl VideoSessionResources<'_> {
         })
     }
 
-    pub(crate) fn process_sps(&mut self, sps: SeqParameterSet) -> Result<(), VulkanDecoderError> {
+    pub fn process_sps(&mut self, sps: SeqParameterSet) -> Result<(), VulkanDecoderError> {
         let new_session_params = SessionParams {
             max_coded_extent: sps.size()?,
             max_dpb_slots: sps.max_num_ref_frames + 1, // +1 for current frame
@@ -178,7 +178,7 @@ impl VideoSessionResources<'_> {
         Ok(())
     }
 
-    pub(crate) fn process_pps(&mut self, pps: PicParameterSet) -> Result<(), VulkanDecoderError> {
+    pub fn process_pps(&mut self, pps: PicParameterSet) -> Result<(), VulkanDecoderError> {
         self.parameters_manager.put_pps(&pps)?;
         self.pps.insert(
             (pps.seq_parameter_set_id.id(), pps.pic_parameter_set_id.id()),
@@ -187,7 +187,7 @@ impl VideoSessionResources<'_> {
         Ok(())
     }
 
-    pub(crate) fn ensure_session(
+    pub fn ensure_session(
         &mut self,
         decoding_device: &DecodingDevice,
         decode_buffer: &CommandBuffer,
@@ -307,7 +307,7 @@ impl VideoSessionResources<'_> {
         Ok(decoding_images)
     }
 
-    pub(crate) fn free_reference_picture(&mut self, i: usize) {
+    pub fn free_reference_picture(&mut self, i: usize) {
         self.decoding_images.free_reference_picture(i);
     }
 }

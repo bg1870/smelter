@@ -24,7 +24,7 @@ pub enum YuvConverterError {
     WgpuDeviceError(#[from] wgpu::hal::DeviceError),
 }
 
-pub(crate) struct Converter {
+pub struct Converter {
     device: Arc<VulkanDevice>,
     image: Arc<Mutex<Image>>,
     pipeline_y: ConvertingPipeline,
@@ -32,7 +32,7 @@ pub(crate) struct Converter {
 }
 
 impl Converter {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<EncodingDevice>,
         width: u32,
         height: u32,
@@ -215,7 +215,7 @@ impl Converter {
     /// # Safety
     /// - The texture can not be a surface texture
     /// - The texture has to be transitioned to [`wgpu::TextureUses::RESOURCE`] usage
-    pub(crate) unsafe fn convert(
+    pub unsafe fn convert(
         &self,
         texture: wgpu::Texture,
         tracker: &mut EncoderTracker,
@@ -296,11 +296,11 @@ impl Converter {
     }
 }
 
-pub(crate) struct ConvertState {
+pub struct ConvertState {
     _encoder: wgpu::hal::vulkan::CommandEncoder,
     _buffer: wgpu::hal::vulkan::CommandBuffer,
-    pub(crate) image: Arc<Mutex<Image>>,
-    pub(crate) _view: ImageView,
+    pub image: Arc<Mutex<Image>>,
+    pub _view: ImageView,
 }
 
 struct ShaderInfo {

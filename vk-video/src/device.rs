@@ -20,17 +20,17 @@ use crate::{
     WgpuTexturesEncoder, wrappers::*,
 };
 
-pub(crate) mod caps;
-pub(crate) mod queues;
+pub mod caps;
+pub mod queues;
 
-pub(crate) const REQUIRED_EXTENSIONS: &[&CStr] = &[vk::KHR_VIDEO_QUEUE_NAME];
+pub const REQUIRED_EXTENSIONS: &[&CStr] = &[vk::KHR_VIDEO_QUEUE_NAME];
 
-pub(crate) const DECODE_EXTENSIONS: &[&CStr] = &[
+pub const DECODE_EXTENSIONS: &[&CStr] = &[
     vk::KHR_VIDEO_DECODE_QUEUE_NAME,
     vk::KHR_VIDEO_DECODE_H264_NAME,
 ];
 
-pub(crate) const ENCODE_EXTENSIONS: &[&CStr] = &[
+pub const ENCODE_EXTENSIONS: &[&CStr] = &[
     vk::KHR_VIDEO_ENCODE_QUEUE_NAME,
     vk::KHR_VIDEO_ENCODE_H264_NAME,
 ];
@@ -73,21 +73,21 @@ pub struct EncoderParameters {
 /// Open connection to a coding-capable device. Also contains a [`wgpu::Device`], a [`wgpu::Queue`] and
 /// a [`wgpu::Adapter`].
 pub struct VulkanDevice {
-    pub(crate) wgpu_device: wgpu::Device,
-    pub(crate) wgpu_queue: wgpu::Queue,
-    pub(crate) wgpu_adapter: wgpu::Adapter,
-    pub(crate) _physical_device: vk::PhysicalDevice,
-    pub(crate) allocator: Arc<Allocator>,
-    pub(crate) queues: Queues,
-    pub(crate) native_decode_capabilities: Option<NativeDecodeCapabilities>,
-    pub(crate) native_encode_capabilities: Option<NativeEncodeCapabilities>,
-    pub(crate) supports_decoding: bool,
-    pub(crate) supports_encoding: bool,
-    pub(crate) device: Arc<Device>,
+    pub wgpu_device: wgpu::Device,
+    pub wgpu_queue: wgpu::Queue,
+    pub wgpu_adapter: wgpu::Adapter,
+    pub _physical_device: vk::PhysicalDevice,
+    pub allocator: Arc<Allocator>,
+    pub queues: Queues,
+    pub native_decode_capabilities: Option<NativeDecodeCapabilities>,
+    pub native_encode_capabilities: Option<NativeEncodeCapabilities>,
+    pub supports_decoding: bool,
+    pub supports_encoding: bool,
+    pub device: Arc<Device>,
 }
 
 impl VulkanDevice {
-    pub(crate) fn new(
+    pub fn new(
         instance: &VulkanInstance,
         wgpu_features: wgpu::Features,
         wgpu_limits: wgpu::Limits,
@@ -613,10 +613,10 @@ impl std::fmt::Debug for VulkanDevice {
     }
 }
 
-pub(crate) struct DecodingDevice {
-    pub(crate) vulkan_device: Arc<VulkanDevice>,
-    pub(crate) h264_decode_queue: Queue,
-    pub(crate) profile_capabilities: NativeDecodeProfileCapabilities,
+pub struct DecodingDevice {
+    pub vulkan_device: Arc<VulkanDevice>,
+    pub h264_decode_queue: Queue,
+    pub profile_capabilities: NativeDecodeProfileCapabilities,
 }
 
 impl Deref for DecodingDevice {
@@ -627,10 +627,10 @@ impl Deref for DecodingDevice {
     }
 }
 
-pub(crate) struct EncodingDevice {
-    pub(crate) vulkan_device: Arc<VulkanDevice>,
-    pub(crate) h264_encode_queue: Queue,
-    pub(crate) native_encode_capabilities: NativeEncodeCapabilities,
+pub struct EncodingDevice {
+    pub vulkan_device: Arc<VulkanDevice>,
+    pub h264_encode_queue: Queue,
+    pub native_encode_capabilities: NativeEncodeCapabilities,
 }
 
 impl Deref for EncodingDevice {

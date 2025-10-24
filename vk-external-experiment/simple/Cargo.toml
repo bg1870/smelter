@@ -1,0 +1,9 @@
+[package]
+name = "simple"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vk-video = { path = "../../vk-video" }
+wgpu = "25.0.2"
+ash = "0.38.0"

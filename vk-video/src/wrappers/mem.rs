@@ -9,14 +9,14 @@ use crate::{
 
 use super::{Device, H264DecodeProfileInfo, Instance};
 
-pub(crate) struct Allocator {
-    allocator: vk_mem::Allocator,
+pub struct Allocator {
+    allocator: Arc<vk_mem::Allocator>,
     _instance: Arc<Instance>,
-    pub(crate) device: Arc<Device>,
+    pub device: Arc<Device>,
 }
 
 impl Allocator {
-    pub(crate) fn new(
+    pub fn new(
         instance: Arc<Instance>,
         physical_device: vk::PhysicalDevice,
         device: Arc<Device>,
@@ -28,7 +28,7 @@ impl Allocator {
         let allocator = unsafe { vk_mem::Allocator::new(allocator_create_info)? };
 
         Ok(Self {
-            allocator,
+            allocator: Arc::new(allocator),
             device,
             _instance: instance,
         })
@@ -43,13 +43,13 @@ impl std::ops::Deref for Allocator {
     }
 }
 
-pub(crate) struct MemoryAllocation {
-    pub(crate) allocation: vk_mem::Allocation,
+pub struct MemoryAllocation {
+    pub allocation: vk_mem::Allocation,
     allocator: Arc<Allocator>,
 }
 
 impl MemoryAllocation {
-    pub(crate) fn new(
+    pub fn new(
         allocator: Arc<Allocator>,
         memory_requirements: &vk::MemoryRequirements,
         alloc_info: &vk_mem::AllocationCreateInfo,
@@ -62,7 +62,7 @@ impl MemoryAllocation {
         })
     }
 
-    pub(crate) fn allocation_info(&self) -> vk_mem::AllocationInfo {
+    pub fn allocation_info(&self) -> vk_mem::AllocationInfo {
         self.allocator.get_allocation_info(&self.allocation)
     }
 }
@@ -81,14 +81,14 @@ impl Drop for MemoryAllocation {
     }
 }
 
-pub(crate) struct DecodeInputBuffer {
-    pub(crate) buffer: Buffer,
+pub struct DecodeInputBuffer {
+    pub buffer: Buffer,
     capacity: u64,
     allocator: Arc<Allocator>,
 }
 
 impl DecodeInputBuffer {
-    pub(crate) fn new(
+    pub fn new(
         allocator: Arc<Allocator>,
         profile: &H264DecodeProfileInfo,
     ) -> Result<Self, VulkanDecoderError> {
@@ -103,7 +103,7 @@ impl DecodeInputBuffer {
     }
 
     /// size must be passed in here for alignment reasons
-    pub(crate) fn upload_data(
+    pub fn upload_data(
         &mut self,
         data: &[u8],
         size: u64,
@@ -127,21 +127,21 @@ impl DecodeInputBuffer {
     }
 }
 
-pub(crate) struct Buffer {
-    pub(crate) buffer: vk::Buffer,
-    pub(crate) allocation: vk_mem::Allocation,
+pub struct Buffer {
+    pub buffer: vk::Buffer,
+    pub allocation: vk_mem::Allocation,
     allocator: Arc<Allocator>,
     transfer_direction: TransferDirection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TransferDirection {
+pub enum TransferDirection {
     GpuToMem,
     MemToGpu,
 }
 
 impl Buffer {
-    pub(crate) fn new_decode(
+    pub fn new_decode(
         allocator: Arc<Allocator>,
         size: u64,
         profile: &H264DecodeProfileInfo,
@@ -158,7 +158,7 @@ impl Buffer {
         Self::new(allocator, buffer_create_info, TransferDirection::MemToGpu)
     }
 
-    pub(crate) fn new_encode(
+    pub fn new_encode(
         allocator: Arc<Allocator>,
         size: u64,
         profile: &H264EncodeProfileInfo,
@@ -175,7 +175,7 @@ impl Buffer {
         Self::new(allocator, buffer_create_info, TransferDirection::GpuToMem)
     }
 
-    pub(crate) fn new_transfer(
+    pub fn new_transfer(
         allocator: Arc<Allocator>,
         size: u64,
         direction: TransferDirection,
@@ -193,7 +193,7 @@ impl Buffer {
         Self::new(allocator, buffer_create_info, direction)
     }
 
-    pub(crate) fn new_transfer_with_data(
+    pub fn new_transfer_with_data(
         allocator: Arc<Allocator>,
         data: &[u8],
     ) -> Result<Self, VulkanCommonError> {
@@ -236,7 +236,7 @@ impl Buffer {
 
     /// ## Safety
     /// the buffer has to be mappable and readable
-    pub(crate) unsafe fn download_data_from_buffer(
+    pub unsafe fn download_data_from_buffer(
         &mut self,
         size: usize,
     ) -> Result<Vec<u8>, VulkanCommonError> {
@@ -284,17 +284,18 @@ impl std::ops::Deref for Buffer {
     }
 }
 
-pub(crate) struct Image {
-    pub(crate) image: vk::Image,
+pub struct Image {
+    pub image: vk::Image,
     allocation: vk_mem::Allocation,
     allocator: Arc<Allocator>,
-    pub(crate) device: Arc<Device>,
-    pub(crate) layout: Box<[vk::ImageLayout]>,
-    pub(crate) extent: vk::Extent3D,
+    pool: Option<vk_mem::AllocatorPool>,
+    pub device: Arc<Device>,
+    pub layout: Box<[vk::ImageLayout]>,
+    pub extent: vk::Extent3D,
 }
 
 impl Image {
-    pub(crate) fn new(
+    pub fn new(
         allocator: Arc<Allocator>,
         image_create_info: &vk::ImageCreateInfo,
     ) -> Result<Self, VulkanCommonError> {
@@ -313,6 +314,7 @@ impl Image {
         Ok(Image {
             image,
             allocation,
+            pool: None,
             device: allocator.device.clone(),
             allocator,
             layout,
@@ -320,7 +322,70 @@ impl Image {
         })
     }
 
-    pub(crate) fn transition_layout(
+    pub fn new_export(
+        device: &Device,
+        allocator: Arc<Allocator>,
+    ) -> Result<Self, VulkanCommonError> {
+        // TODO: Requires 1.3
+        let mut export_image_info = vk::ExternalMemoryImageCreateInfo::default()
+            .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+        let image_create_info = vk::ImageCreateInfo::default()
+            .push_next(&mut export_image_info)
+            .image_type(vk::ImageType::TYPE_2D)
+            .format(vk::Format::R8G8B8A8_SRGB)
+            .extent(vk::Extent3D {
+                width: 1280,
+                height: 720,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::LINEAR)
+            .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+        let alloc_info = vk_mem::AllocationCreateInfo {
+            usage: vk_mem::MemoryUsage::Auto,
+            required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            ..Default::default()
+        };
+        let mem_type = unsafe {
+            allocator.find_memory_type_index_for_image_info(image_create_info, &alloc_info)?
+        };
+        // TODO: Requires 1.3
+        let export_alloc_info = vk::ExportMemoryAllocateInfo::default()
+            .handle_types(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+        let pool_info = vk_mem::PoolCreateInfo {
+            memory_allocate_next: &raw const export_alloc_info as *const _,
+            memory_type_index: mem_type,
+            ..Default::default()
+        };
+        let pool = allocator.allocator.create_pool(&pool_info)?;
+        let extent = image_create_info.extent;
+        let layout =
+            vec![image_create_info.initial_layout; image_create_info.array_layers as usize]
+                .into_boxed_slice();
+        let alloc_info = vk_mem::AllocationCreateInfo {
+            flags: vk_mem::AllocationCreateFlags::DEDICATED_MEMORY,
+            ..Default::default()
+        };
+
+        let (image, allocation) = unsafe { pool.create_image(&image_create_info, &alloc_info)? };
+
+        Ok(Image {
+            image,
+            allocation,
+            device: allocator.device.clone(),
+            pool: Some(pool),
+            allocator,
+            layout,
+            extent,
+        })
+    }
+
+    pub fn transition_layout(
         &mut self,
         command_buffer: vk::CommandBuffer,
         stages: std::ops::Range<vk::PipelineStageFlags2>,
@@ -361,7 +426,7 @@ impl Image {
         Ok(old_layout)
     }
 
-    pub(crate) fn transition_layout_single_layer(
+    pub fn transition_layout_single_layer(
         &mut self,
         command_buffer: vk::CommandBuffer,
         stages: std::ops::Range<vk::PipelineStageFlags2>,
@@ -402,14 +467,14 @@ impl Drop for Image {
     }
 }
 
-pub(crate) struct ImageView {
-    pub(crate) view: vk::ImageView,
-    pub(crate) _image: Arc<Mutex<Image>>,
-    pub(crate) device: Arc<Device>,
+pub struct ImageView {
+    pub view: vk::ImageView,
+    pub _image: Arc<Mutex<Image>>,
+    pub device: Arc<Device>,
 }
 
 impl ImageView {
-    pub(crate) fn new(
+    pub fn new(
         device: Arc<Device>,
         image: Arc<Mutex<Image>>,
         create_info: &vk::ImageViewCreateInfo,

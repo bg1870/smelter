@@ -24,18 +24,18 @@ impl<T> Ord for DecodeResult<T> {
     }
 }
 
-pub(crate) struct FrameSorter<T> {
+pub struct FrameSorter<T> {
     frames: BinaryHeap<DecodeResult<T>>,
 }
 
 impl<T> FrameSorter<T> {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             frames: BinaryHeap::new(),
         }
     }
 
-    pub(crate) fn put(&mut self, frame: DecodeResult<T>) -> Vec<Frame<T>> {
+    pub fn put(&mut self, frame: DecodeResult<T>) -> Vec<Frame<T>> {
         let max_num_reorder_frames = frame.max_num_reorder_frames as usize;
         let is_idr = frame.is_idr;
         let mut result = Vec::new();
@@ -70,7 +70,7 @@ impl<T> FrameSorter<T> {
         result
     }
 
-    pub(crate) fn flush(&mut self) -> Vec<Frame<T>> {
+    pub fn flush(&mut self) -> Vec<Frame<T>> {
         let mut result = Vec::with_capacity(self.frames.len());
 
         while !self.frames.is_empty() {

@@ -17,6 +17,8 @@ members = [
     "vk-video",
     "libcef",
 
+    "vk-external-experiment/simple",
+
     # Tools/utils/tests
     "integration-tests",
     "tools",

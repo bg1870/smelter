@@ -9,13 +9,13 @@ use crate::{
     wrappers::{CodingImageBundle, CommandBuffer, DecodedPicturesBuffer, H264DecodeProfileInfo},
 };
 
-pub(crate) struct DecodingImages<'a> {
-    pub(crate) dpb: DecodedPicturesBuffer<'a>,
-    pub(crate) dst_image: Option<CodingImageBundle<'a>>,
+pub struct DecodingImages<'a> {
+    pub dpb: DecodedPicturesBuffer<'a>,
+    pub dst_image: Option<CodingImageBundle<'a>>,
 }
 
 impl<'a> DecodingImages<'a> {
-    pub(crate) fn target_picture_resource_info(
+    pub fn target_picture_resource_info(
         &'a self,
         new_reference_slot_index: usize,
     ) -> Option<vk::VideoPictureResourceInfoKHR<'a>> {
@@ -25,7 +25,7 @@ impl<'a> DecodingImages<'a> {
         }
     }
 
-    pub(crate) fn target_info(
+    pub fn target_info(
         &self,
         new_reference_slot_index: usize,
     ) -> (Arc<Mutex<Image>>, usize) {
@@ -41,7 +41,7 @@ impl<'a> DecodingImages<'a> {
         }
     }
 
-    pub(crate) fn new(
+    pub fn new(
         decoding_device: &DecodingDevice,
         command_buffer: &CommandBuffer,
         profile: &H264DecodeProfileInfo,
@@ -105,35 +105,35 @@ impl<'a> DecodingImages<'a> {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn dbp_extent(&self) -> vk::Extent3D {
+    pub fn dbp_extent(&self) -> vk::Extent3D {
         self.dpb.image.extent()
     }
 
     #[allow(dead_code)]
-    pub(crate) fn dst_extent(&self) -> Option<vk::Extent3D> {
+    pub fn dst_extent(&self) -> Option<vk::Extent3D> {
         self.dst_image.as_ref().map(|i| i.extent())
     }
 
-    pub(crate) fn reference_slot_info(&self) -> Vec<vk::VideoReferenceSlotInfoKHR<'_>> {
+    pub fn reference_slot_info(&self) -> Vec<vk::VideoReferenceSlotInfoKHR<'_>> {
         self.dpb.reference_slot_info()
     }
 
-    pub(crate) fn allocate_reference_picture(&mut self) -> Result<usize, VulkanDecoderError> {
+    pub fn allocate_reference_picture(&mut self) -> Result<usize, VulkanDecoderError> {
         Ok(self.dpb.allocate_reference_picture()?)
     }
 
-    pub(crate) fn video_resource_info(
+    pub fn video_resource_info(
         &self,
         i: usize,
     ) -> Option<&vk::VideoPictureResourceInfoKHR<'_>> {
         self.dpb.video_resource_info(i)
     }
 
-    pub(crate) fn free_reference_picture(&mut self, i: usize) {
+    pub fn free_reference_picture(&mut self, i: usize) {
         self.dpb.free_reference_picture(i);
     }
 
-    pub(crate) fn reset_all_allocations(&mut self) {
+    pub fn reset_all_allocations(&mut self) {
         self.dpb.reset_all_allocations();
     }
 }

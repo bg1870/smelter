@@ -16,7 +16,7 @@ use crate::{VulkanCommonError, wrappers::*};
 mod frame_sorter;
 mod session_resources;
 
-pub(crate) use frame_sorter::FrameSorter;
+pub use frame_sorter::FrameSorter;
 
 pub struct VulkanDecoder<'a> {
     video_session_resources: Option<VideoSessionResources<'a>>,
@@ -27,17 +27,17 @@ pub struct VulkanDecoder<'a> {
     decoding_device: Arc<DecodingDevice>,
 }
 
-pub(crate) enum DecoderTrackerWaitState {
+pub enum DecoderTrackerWaitState {
     NewDecodingImagesLayoutTransition,
     Decode,
     DownloadImageToBuffer,
 }
 
-pub(crate) type DecoderTracker = Tracker<DecoderTrackerWaitState>;
+pub type DecoderTracker = Tracker<DecoderTrackerWaitState>;
 
-pub(crate) struct CommandPools {
-    pub(crate) _decode_pool: Arc<CommandPool>,
-    pub(crate) _transfer_pool: Arc<CommandPool>,
+pub struct CommandPools {
+    pub _decode_pool: Arc<CommandPool>,
+    pub _transfer_pool: Arc<CommandPool>,
 }
 
 struct CommandBuffers {
@@ -133,7 +133,7 @@ impl VulkanDecoder<'_> {
     }
 }
 
-pub(crate) struct DecodeResult<T> {
+pub struct DecodeResult<T> {
     frame: T,
     pts: Option<u64>,
     pic_order_cnt: i32,
