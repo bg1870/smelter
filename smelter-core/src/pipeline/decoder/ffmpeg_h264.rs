@@ -12,6 +12,7 @@ use ffmpeg_next::{
     media::Type,
 };
 use smelter_render::Frame;
+use tokio::io::AsyncReadExt;
 use tracing::{error, info, trace, warn};
 
 const TIME_BASE: i32 = 1_000_000;
@@ -19,6 +20,7 @@ const TIME_BASE: i32 = 1_000_000;
 pub struct FfmpegH264Decoder {
     decoder: ffmpeg_next::decoder::Opened,
     av_frame: ffmpeg_next::frame::Video,
+    i: usize,
 }
 
 impl VideoDecoder for FfmpegH264Decoder {
@@ -36,7 +38,9 @@ impl VideoDecoder for FfmpegH264Decoder {
 
         let mut decoder = Context::from_parameters(parameters)?;
         unsafe {
-            (*decoder.as_mut_ptr()).pkt_timebase = Rational::new(1, TIME_BASE).into();
+            let decoder = &mut *decoder.as_mut_ptr();
+            decoder.pkt_timebase = Rational::new(1, TIME_BASE).into();
+            decoder.err_recognition = ffmpeg_next::ffi::AV_EF_EXPLODE;
         }
 
         let decoder = decoder.decoder();
@@ -44,13 +48,22 @@ impl VideoDecoder for FfmpegH264Decoder {
         Ok(Self {
             decoder,
             av_frame: ffmpeg_next::frame::Video::empty(),
+            i: 0,
         })
     }
 }
 
 impl VideoDecoderInstance for FfmpegH264Decoder {
-    fn decode(&mut self, chunk: EncodedInputChunk) -> Vec<Frame> {
+    fn decode(&mut self, mut chunk: EncodedInputChunk) -> Vec<Frame> {
         trace!(?chunk, "H264 decoder received a chunk.");
+        // if self.i == 100 {
+        //     chunk.data.truncate(chunk.data.len() / 2);
+        // }
+        self.i += 1;
+        if self.i >= 100 && self.i <= 150 {
+            tracing::error!("Is key {}", chunk.)
+            return Vec::new();
+        }
         let av_packet = match create_av_packet(chunk, VideoCodec::H264, TIME_BASE) {
             Ok(packet) => packet,
             Err(err) => {
