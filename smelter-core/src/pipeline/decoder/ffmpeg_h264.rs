@@ -19,6 +19,7 @@ const TIME_BASE: i32 = 1_000_000;
 pub struct FfmpegH264Decoder {
     decoder: ffmpeg_next::decoder::Opened,
     av_frame: ffmpeg_next::frame::Video,
+    chunk_count: usize,
 }
 
 impl VideoDecoder for FfmpegH264Decoder {
@@ -36,7 +37,11 @@ impl VideoDecoder for FfmpegH264Decoder {
 
         let mut decoder = Context::from_parameters(parameters)?;
         unsafe {
-            (*decoder.as_mut_ptr()).pkt_timebase = Rational::new(1, TIME_BASE).into();
+            let decoder = &mut *decoder.as_mut_ptr();
+            decoder.pkt_timebase = Rational::new(1, TIME_BASE).into();
+            decoder.error_concealment = ffmpeg_next::ffi::FF_EC_FAVOR_INTER;
+            decoder.err_recognition = ffmpeg_next::ffi::AV_EF_EXPLODE;
+            decoder.debug = ffmpeg_next::ffi::FF_DEBUG_NOMC;
         }
 
         let decoder = decoder.decoder();
@@ -44,6 +49,7 @@ impl VideoDecoder for FfmpegH264Decoder {
         Ok(Self {
             decoder,
             av_frame: ffmpeg_next::frame::Video::empty(),
+            chunk_count: 0,
         })
     }
 }
@@ -51,6 +57,11 @@ impl VideoDecoder for FfmpegH264Decoder {
 impl VideoDecoderInstance for FfmpegH264Decoder {
     fn decode(&mut self, chunk: EncodedInputChunk) -> Vec<Frame> {
         trace!(?chunk, "H264 decoder received a chunk.");
+
+        self.chunk_count += 1;
+        if self.chunk_count > 150 && self.chunk_count < 160 {
+            return Vec::new();
+        }
         let av_packet = match create_av_packet(chunk, VideoCodec::H264, TIME_BASE) {
             Ok(packet) => packet,
             Err(err) => {

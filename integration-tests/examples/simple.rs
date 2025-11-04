@@ -81,6 +81,6 @@ fn client_code() -> Result<()> {
 
     examples::post("start", &json!({}))?;
 
-    start_ffmpeg_send(IP, Some(INPUT_PORT), None, TestSample::SampleLoopH264)?;
+    start_ffmpeg_send(IP, Some(INPUT_PORT), None, TestSample::BigBuckBunnyH264AAC)?;
     Ok(())
 }

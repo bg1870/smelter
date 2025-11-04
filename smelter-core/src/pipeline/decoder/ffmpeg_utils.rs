@@ -29,6 +29,11 @@ pub(super) fn from_av_frame(
             "Received negative PTS. PTS values of the decoder output are not monotonically increasing."
         )
     }
+
+    let raw = unsafe { &*decoded.as_ptr() };
+    if raw.decode_error_flags != 0 {
+        panic!("ERROR {}", raw.decode_error_flags);
+    }
     let pts = Duration::from_secs_f64(f64::max(pts as f64 / time_base as f64, 0.0));
 
     let data = match decoded.format() {

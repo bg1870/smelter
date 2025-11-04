@@ -12,6 +12,7 @@ use crate::prelude::*;
 
 pub struct VulkanH264Decoder {
     decoder: WgpuTexturesDecoder,
+    chunk_count: usize,
 }
 
 impl VideoDecoder for VulkanH264Decoder {
@@ -25,7 +26,10 @@ impl VideoDecoder for VulkanH264Decoder {
                 let decoder = device.create_wgpu_textures_decoder(DecoderParameters {
                     missed_frame_handling: MissedFrameHandling::Strict,
                 })?;
-                Ok(Self { decoder })
+                Ok(Self {
+                    decoder,
+                    chunk_count: 0,
+                })
             }
             None => Err(DecoderInitError::VulkanContextRequiredForVulkanDecoder),
         }
@@ -34,6 +38,11 @@ impl VideoDecoder for VulkanH264Decoder {
 
 impl VideoDecoderInstance for VulkanH264Decoder {
     fn decode(&mut self, chunk: EncodedInputChunk) -> Vec<Frame> {
+        self.chunk_count += 1;
+        if self.chunk_count > 150 && self.chunk_count < 160 {
+            return Vec::new();
+        }
+
         let chunk = vk_video::EncodedInputChunk {
             data: chunk.data.as_ref(),
             pts: Some(chunk.pts.as_micros() as u64),
