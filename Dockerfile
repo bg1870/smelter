@@ -18,8 +18,8 @@ FROM ubuntu:noble-20240423 AS builder
 # Use non‑interactive front‑end for apt
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Smelter uses Rust 1.81, but you can override this at build time
-ARG RUST_VERSION=1.81
+# Smelter uses Rust edition 2024 which requires Rust 1.85+
+ARG RUST_VERSION=stable
 
 # Install development dependencies.  The Smelter docs list FFmpeg,
 # libopus, SSL, pkg‑config and other libraries as prerequisites for
