@@ -56,6 +56,14 @@ FROM ubuntu:noble-20250716
 
 LABEL org.opencontainers.image.source="https://github.com/software-mansion/smelter"
 
+# NOTE: This container REQUIRES GPU access at runtime because Smelter
+# requires the TEXTURE_BINDING_ARRAY WGPU feature which is not supported
+# by software renderers (llvmpipe/lavapipe).
+#
+# Run with GPU access:
+#   AMD/Intel: docker run --device /dev/dri <image-name>
+#   NVIDIA:    docker run --gpus all --runtime=nvidia <image-name>
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV NVIDIA_DRIVER_CAPABILITIES="compute,graphics,utility"
 

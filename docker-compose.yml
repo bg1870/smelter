@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  smelter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - SMELTER_API_PORT=8081
+      - SMELTER_FORCE_GPU=true
+      - SMELTER_WEB_RENDERER_ENABLE=true
+      - SMELTER_WEB_RENDERER_GPU_ENABLE=true
+      - SMELTER_LOGGER_LEVEL=info,wgpu_hal=warn,wgpu_core=warn
+      - SMELTER_LOGGER_FORMAT=json
+    # GPU access is REQUIRED - uncomment the appropriate option:
+
+    # For AMD/Intel GPUs:
+    devices:
+      - /dev/dri:/dev/dri
+
+    # For NVIDIA GPUs (requires nvidia-docker2):
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility]
+
+    restart: unless-stopped
