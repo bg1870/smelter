@@ -77,27 +77,26 @@ RUN apt-get update -y -qq \
 # sudo privileges.  We avoid using `adduser` since it may not be
 # available in minimal images.
 RUN useradd -ms /bin/bash "$USERNAME" \
-    && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-
-# Create directories used by Smelter for temporary files and the
-# XDG runtime.  These directories are owned by the smelter user.
-USER "$USERNAME"
-RUN mkdir -p \
+    && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && mkdir -p \
       /home/"$USERNAME"/smelter \
       /home/"$USERNAME"/smelter/lib \
       /home/"$USERNAME"/smelter/xdg_runtime
-WORKDIR /home/"$USERNAME"/smelter
 
 # Copy compiled binaries and dynamic libraries from the builder stage.
-COPY --from=builder /root/project/target/release/main_process /home/$USERNAME/smelter/main_process
-COPY --from=builder /root/project/target/release/process_helper /home/$USERNAME/smelter/process_helper
-COPY --from=builder /root/project/target/release/lib /home/$USERNAME/smelter/lib
+# Set ownership to the smelter user and make binaries executable.
+COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/smelter /home/$USERNAME/smelter/main_process
+COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/process_helper /home/$USERNAME/smelter/process_helper
+COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/lib /home/$USERNAME/smelter/lib
 
 # Copy the entrypoint script into the image.  This script starts the
 # DBus service and launches the Smelter compositor under Xvfb as
 # performed by the official Dockerfile【215809594434415†L60-L69】.
-COPY entrypoint.sh /home/$USERNAME/smelter/entrypoint.sh
-RUN chmod +x /home/$USERNAME/smelter/entrypoint.sh
+COPY --chmod=755 --chown=$USERNAME:$USERNAME entrypoint.sh /home/$USERNAME/smelter/entrypoint.sh
+
+# Switch to the non-root user and set working directory
+USER "$USERNAME"
+WORKDIR /home/"$USERNAME"/smelter
 
 # Set environment variables required by Smelter.  The compositor uses
 # these variables to locate its helper processes and libraries.
