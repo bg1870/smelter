@@ -26,7 +26,7 @@ ARG RUST_VERSION=1.81
 # building from source【779638992328645†L202-L233】.
 RUN apt-get update -y -qq \
     && apt-get install -y --no-install-recommends \
-      build-essential curl git pkg-config cmake libssl-dev libclang-dev sudo \
+      build-essential curl ca-certificates git pkg-config cmake libssl-dev libclang-dev sudo \
       libnss3 libatk1.0-0 libatk-bridge2.0-0 libgdk-pixbuf2.0-0 libgtk-3-0 \
       libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers \
       ffmpeg libavcodec-dev libavformat-dev libavfilter-dev \
@@ -35,9 +35,11 @@ RUN apt-get update -y -qq \
 
 # Install Rust toolchain.  Smelter is written in Rust and compiled with
 # cargo【779638992328645†L202-L244】.
-RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y \
+    && . "$HOME/.cargo/env" \
+    && rustup install "$RUST_VERSION" \
+    && rustup default "$RUST_VERSION"
 ENV PATH="$PATH:/root/.cargo/bin"
-RUN rustup install "$RUST_VERSION" && rustup default "$RUST_VERSION"
 
 # Copy the Smelter project into the build context.  The working
 # directory inside the container is set to the root of the project.
