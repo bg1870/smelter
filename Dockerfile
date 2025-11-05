@@ -70,7 +70,7 @@ ARG USERNAME=smelter
 RUN apt-get update -y -qq \
     && apt-get install -y --no-install-recommends \
       sudo ffmpeg libnss3 libatk1.0-0 libatk-bridge2.0-0 libgdk-pixbuf2.0-0 \
-      libgtk-3-0 xvfb dbus-x11 mesa-vulkan-drivers \
+      libgtk-3-0 xvfb dbus dbus-x11 mesa-vulkan-drivers \
     && rm -rf /var/lib/apt/lists/*
 
 # After installing sudo, create a new user and grant it password‑less
