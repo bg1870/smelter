@@ -13,7 +13,7 @@
 # project【215809594434415†L0-L70】.
 
 # ----- Build stage ---------------------------------------------------
-FROM ubuntu:noble-20240423 AS builder
+FROM ubuntu:noble-20250716 AS builder
 
 # Use non‑interactive front‑end for apt
 ENV DEBIAN_FRONTEND=noninteractive
@@ -52,7 +52,7 @@ WORKDIR /root/project
 RUN cargo build --release
 
 # ----- Runtime stage -------------------------------------------------
-FROM ubuntu:noble-20240423
+FROM ubuntu:noble-20250716
 
 LABEL org.opencontainers.image.source="https://github.com/software-mansion/smelter"
 
@@ -65,12 +65,12 @@ ARG USERNAME=smelter
 
 # Install runtime dependencies.  The runtime image needs ffmpeg for
 # media handling and the GTK and X11 libraries for CEF.  We also
-# install `sudo` so that the entrypoint script can start services as
-# root【215809594434415†L30-L70】.
+# install `sudo` and `adduser` for user management and `xvfb` for
+# headless X11 display【215809594434415†L30-L70】.
 RUN apt-get update -y -qq \
     && apt-get install -y --no-install-recommends \
-      sudo ffmpeg libnss3 libatk1.0-0 libatk-bridge2.0-0 libgdk-pixbuf2.0-0 \
-      libgtk-3-0 xvfb dbus dbus-x11 mesa-vulkan-drivers \
+      sudo adduser ffmpeg libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+      libgdk-pixbuf2.0-0 libgtk-3-0 xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 # After installing sudo, create a new user and grant it password‑less
@@ -85,7 +85,7 @@ RUN useradd -ms /bin/bash "$USERNAME" \
 
 # Copy compiled binaries and dynamic libraries from the builder stage.
 # Set ownership to the smelter user and make binaries executable.
-COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/smelter /home/$USERNAME/smelter/main_process
+COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/main_process /home/$USERNAME/smelter/main_process
 COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/process_helper /home/$USERNAME/smelter/process_helper
 COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/lib /home/$USERNAME/smelter/lib
 
