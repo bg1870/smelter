@@ -202,7 +202,9 @@ impl SmelterState {
                 (OutputHandle::Whep(whep_output), register_request)
             }
             OutputProtocol::Hls => {
-                let hls_output = HlsOutputBuilder::new().prompt(self.running_state)?.build();
+                let hls_output = HlsOutputBuilder::new()
+                    .prompt(self.running_state)?
+                    .build(self.running_state);
                 let register_request = hls_output.serialize_register(&self.inputs);
                 (OutputHandle::Hls(hls_output), register_request)
             }
