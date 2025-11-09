@@ -67,25 +67,61 @@ sudo apt-get install -y \
     libssl-dev
 
 # Install FFmpeg 6.x and media libraries
-echo_info "Adding FFmpeg 6.x PPA repository..."
-sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg6 -y
-sudo apt-get update -y
+# Check Ubuntu version to determine installation method
+source /etc/os-release
+UBUNTU_VERSION_ID="${VERSION_ID%.*}"  # Extract major version (e.g., "20" from "20.04")
 
-echo_info "Installing FFmpeg 6.x and media processing libraries..."
-sudo apt-get install -y \
-    ffmpeg \
-    libavcodec-dev \
-    libavformat-dev \
-    libavfilter-dev \
-    libavdevice-dev \
-    libavutil-dev \
-    libswscale-dev \
-    libswresample-dev \
-    libopus-dev
+if [ "$UBUNTU_VERSION_ID" -ge 24 ]; then
+    # Ubuntu 24.04+ has FFmpeg 6.x in default repositories
+    echo_info "Ubuntu ${VERSION_ID} detected - installing FFmpeg from default repositories..."
+    sudo apt-get install -y \
+        ffmpeg \
+        libavcodec-dev \
+        libavformat-dev \
+        libavfilter-dev \
+        libavdevice-dev \
+        libavutil-dev \
+        libswscale-dev \
+        libswresample-dev \
+        libopus-dev
+else
+    # Ubuntu 20.04/22.04 - try PPA first
+    echo_warn "Ubuntu ${VERSION_ID} detected - FFmpeg 6.x not in default repositories"
+    echo_info "Attempting to add FFmpeg 6.x PPA repository..."
+
+    if sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg6 -y 2>/dev/null && sudo apt-get update -y 2>/dev/null; then
+        echo_info "PPA added successfully, installing FFmpeg 6.x..."
+        if sudo apt-get install -y ffmpeg libavcodec-dev libavformat-dev libavfilter-dev \
+            libavdevice-dev libavutil-dev libswscale-dev libswresample-dev libopus-dev 2>/dev/null; then
+            echo_info "FFmpeg 6.x installed from PPA"
+        else
+            echo_error "PPA installation failed"
+            echo_warn "You will need to build FFmpeg 6.x from source"
+            echo_warn "Run: ./install_ffmpeg6_from_source.sh"
+            exit 1
+        fi
+    else
+        echo_error "Failed to add PPA repository"
+        echo_warn "You will need to build FFmpeg 6.x from source"
+        echo_warn "Run: ./install_ffmpeg6_from_source.sh"
+        exit 1
+    fi
+fi
 
 # Verify FFmpeg version
 FFMPEG_VERSION=$(ffmpeg -version | head -1)
 echo_info "Installed: $FFMPEG_VERSION"
+
+# Check if FFmpeg is version 6.x or higher
+if ffmpeg -version 2>/dev/null | grep -qE "version (6\.|7\.|8\.|[0-9]{2,}\.)"; then
+    echo_info "FFmpeg 6.x or higher detected - OK"
+else
+    echo_error "FFmpeg version is too old! Smelter requires FFmpeg 6.x or higher"
+    echo_warn "Current version: $FFMPEG_VERSION"
+    echo_warn "Please build FFmpeg 6.x from source:"
+    echo_warn "  ./install_ffmpeg6_from_source.sh"
+    exit 1
+fi
 
 # Install graphics and Vulkan libraries
 echo_info "Installing graphics and Vulkan libraries..."
