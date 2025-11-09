@@ -25,6 +25,11 @@ impl VideoEncoder for FfmpegH264Encoder {
 
     type Options = FfmpegH264EncoderOptions;
 
+    /// Create a new H.264 encoder.
+    ///
+    /// Note: For streaming outputs (RTMP, HLS, DASH), the AV_CODEC_FLAG_GLOBAL_HEADER flag
+    /// is automatically set to ensure SPS/PPS headers are placed in extradata rather than
+    /// inline in the stream. This is a requirement for proper streaming protocol compatibility.
     fn new(
         ctx: &Arc<PipelineCtx>,
         options: FfmpegH264EncoderOptions,
@@ -49,6 +54,9 @@ impl VideoEncoder for FfmpegH264Encoder {
             use ffmpeg_next::ffi;
             (*encoder).color_primaries = ffi::AVColorPrimaries::AVCOL_PRI_BT709;
             (*encoder).color_trc = ffi::AVColorTransferCharacteristic::AVCOL_TRC_BT709;
+            // Set CODEC_FLAG_GLOBAL_HEADER to force SPS/PPS into extradata
+            // This is REQUIRED for streaming protocols like RTMP, HLS, etc.
+            (*encoder).flags |= ffi::AV_CODEC_FLAG_GLOBAL_HEADER as i32;
         }
 
         let mut ffmpeg_options = FfmpegOptions::from(&[

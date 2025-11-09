@@ -13,5 +13,10 @@ export SMELTER_WEB_RENDERER_GPU_ENABLE=true
 export SMELTER_LOGGER_LEVEL="info,wgpu_hal=warn,wgpu_core=warn"
 export SMELTER_LOGGER_FORMAT="json"
 
+# Build release version if it doesn't exist or is out of date
+echo "Building release version..."
+cargo build --release --bin main_process --bin process_helper
+
 # Start Smelter
+echo "Starting Smelter..."
 ./target/release/main_process
