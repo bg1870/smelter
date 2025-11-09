@@ -30,7 +30,7 @@ RUN apt-get update -y -qq \
       libnss3 libatk1.0-0 libatk-bridge2.0-0 libgdk-pixbuf2.0-0 libgtk-3-0 \
       libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers \
       ffmpeg libavcodec-dev libavformat-dev libavfilter-dev \
-      libavdevice-dev libopus-dev \
+      libavdevice-dev libavutil-dev libswscale-dev libswresample-dev libopus-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust toolchain.  Smelter is written in Rust and compiled with
@@ -78,7 +78,7 @@ ARG USERNAME=smelter
 RUN apt-get update -y -qq \
     && apt-get install -y --no-install-recommends \
       sudo adduser ffmpeg libnss3 libatk1.0-0 libatk-bridge2.0-0 \
-      libgdk-pixbuf2.0-0 libgtk-3-0 xvfb \
+      libgdk-pixbuf2.0-0 libgtk-3-0 xvfb dbus \
     && rm -rf /var/lib/apt/lists/*
 
 # After installing sudo, create a new user and grant it password‑less
@@ -100,7 +100,7 @@ COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/lib
 # Copy the entrypoint script into the image.  This script starts the
 # DBus service and launches the Smelter compositor under Xvfb as
 # performed by the official Dockerfile【215809594434415†L60-L69】.
-COPY --chmod=755 --chown=$USERNAME:$USERNAME entrypoint.sh /home/$USERNAME/smelter/entrypoint.sh
+COPY --chmod=755 --chown=$USERNAME:$USERNAME tools/docker/entrypoint.sh /home/$USERNAME/smelter/entrypoint.sh
 
 # Switch to the non-root user and set working directory
 USER "$USERNAME"
