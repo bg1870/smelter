@@ -51,7 +51,8 @@ sudo apt-get install -y \
     curl \
     git \
     pkg-config \
-    ca-certificates
+    ca-certificates \
+    software-properties-common
 
 # Install C/C++ development tools
 echo_info "Installing C/C++ development tools..."
@@ -65,8 +66,12 @@ echo_info "Installing OpenSSL and security libraries..."
 sudo apt-get install -y \
     libssl-dev
 
-# Install FFmpeg and media libraries
-echo_info "Installing FFmpeg and media processing libraries..."
+# Install FFmpeg 6.x and media libraries
+echo_info "Adding FFmpeg 6.x PPA repository..."
+sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg6 -y
+sudo apt-get update -y
+
+echo_info "Installing FFmpeg 6.x and media processing libraries..."
 sudo apt-get install -y \
     ffmpeg \
     libavcodec-dev \
@@ -77,6 +82,10 @@ sudo apt-get install -y \
     libswscale-dev \
     libswresample-dev \
     libopus-dev
+
+# Verify FFmpeg version
+FFMPEG_VERSION=$(ffmpeg -version | head -1)
+echo_info "Installed: $FFMPEG_VERSION"
 
 # Install graphics and Vulkan libraries
 echo_info "Installing graphics and Vulkan libraries..."
@@ -164,6 +173,12 @@ echo "     cargo build --release"
 echo ""
 echo "  4. (Optional) For DeckLink support:"
 echo "     cargo build --release --features decklink"
+echo ""
+echo_warn "IMPORTANT: FFmpeg 6.x is required!"
+echo "  - This script installed FFmpeg 6.x from the PPA repository"
+echo "  - If you encounter FFmpeg-related build errors, verify version with:"
+echo "    ffmpeg -version | head -1"
+echo "  - Expected: FFmpeg version 6.x or higher"
 echo ""
 
 # Check for GPU/Vulkan support
