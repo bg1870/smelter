@@ -57,7 +57,6 @@ sudo apt-get install -y \
 echo_info "Installing C/C++ development tools..."
 sudo apt-get install -y \
     libclang-dev \
-    libstdc++-dev \
     clang \
     llvm-dev
 
