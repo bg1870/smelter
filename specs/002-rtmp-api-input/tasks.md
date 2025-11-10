@@ -23,8 +23,8 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Review existing input pattern from smelter-api/src/input/rtp.rs and smelter-api/src/input/rtp_into.rs
-- [ ] T002 Review core RTMP implementation in smelter-core/src/pipeline/rtmp/ and smelter-core/src/protocols/rtmp.rs
+- [X] T001 Review existing input pattern from smelter-api/src/input/rtp.rs and smelter-api/src/input/rtp_into.rs
+- [X] T002 Review core RTMP implementation in smelter-core/src/pipeline/rtmp/ and smelter-core/src/protocols/rtmp.rs
 
 ---
 
@@ -34,11 +34,11 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T003 [P] Create RtmpInput API struct in smelter-api/src/input/rtmp.rs with serde and schemars derives
-- [ ] T004 [P] Create InputRtmpVideoOptions struct in smelter-api/src/input/rtmp.rs
-- [ ] T005 [P] Create RtmpVideoDecoderOptions enum in smelter-api/src/input/rtmp.rs with FfmpegH264 and VulkanH264 variants
-- [ ] T006 Implement TryFrom<RtmpInput> for RegisterInputOptions in smelter-api/src/input/rtmp_into.rs with validation logic
-- [ ] T007 Add rtmp module declaration to smelter-api/src/input.rs with public re-exports
+- [X] T003 [P] Create RtmpInput API struct in smelter-api/src/input/rtmp.rs with serde and schemars derives
+- [X] T004 [P] Create InputRtmpVideoOptions struct in smelter-api/src/input/rtmp.rs
+- [X] T005 [P] Create RtmpVideoDecoderOptions enum in smelter-api/src/input/rtmp.rs with FfmpegH264 and VulkanH264 variants
+- [X] T006 Implement TryFrom<RtmpInput> for RegisterInputOptions in smelter-api/src/input/rtmp_into.rs with validation logic
+- [X] T007 Add rtmp module declaration to smelter-api/src/input.rs with public re-exports
 - [ ] T008 Verify JSON schema generation includes RtmpInput by running cargo run -p tools --bin generate_json_schema
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
