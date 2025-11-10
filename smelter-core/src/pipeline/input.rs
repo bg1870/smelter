@@ -4,6 +4,7 @@ use crate::{
     pipeline::{
         hls::HlsInput,
         mp4::Mp4Input,
+        rtmp::RtmpInput,
         rtp::RtpInput,
         webrtc::{WhepInput, WhipInput},
     },
@@ -29,6 +30,7 @@ pub enum Input {
     Whip(WhipInput),
     Whep(WhepInput),
     Hls(HlsInput),
+    Rtmp(RtmpInput),
     #[cfg(feature = "decklink")]
     DeckLink(super::decklink::DeckLink),
     RawDataChannel,
@@ -42,6 +44,7 @@ impl Input {
             Input::Whip(_input) => InputProtocolKind::Whip,
             Input::Whep(_input) => InputProtocolKind::Whep,
             Input::Hls(_input) => InputProtocolKind::Hls,
+            Input::Rtmp(_input) => InputProtocolKind::Rtmp,
             #[cfg(feature = "decklink")]
             Input::DeckLink(_input) => InputProtocolKind::DeckLink,
             Input::RawDataChannel => InputProtocolKind::RawDataChannel,
@@ -58,6 +61,7 @@ pub(super) fn new_external_input(
         ProtocolInputOptions::Rtp(opts) => RtpInput::new_input(ctx, input_id, opts),
         ProtocolInputOptions::Mp4(opts) => Mp4Input::new_input(ctx, input_id, opts),
         ProtocolInputOptions::Hls(opts) => HlsInput::new_input(ctx, input_id, opts),
+        ProtocolInputOptions::Rtmp(opts) => RtmpInput::new_input(ctx, input_id, opts),
         ProtocolInputOptions::Whip(opts) => WhipInput::new_input(ctx, input_id, opts),
         ProtocolInputOptions::Whep(opts) => WhepInput::new_input(ctx, input_id, opts),
         #[cfg(feature = "decklink")]

@@ -13,6 +13,7 @@ pub enum ProtocolInputOptions {
     Rtp(RtpInputOptions),
     Mp4(Mp4InputOptions),
     Hls(HlsInputOptions),
+    Rtmp(RtmpInputOptions),
     Whip(WhipInputOptions),
     Whep(WhepInputOptions),
     #[cfg(feature = "decklink")]
@@ -51,6 +52,7 @@ pub enum InputProtocolKind {
     Rtp,
     Mp4,
     Hls,
+    Rtmp,
     Whip,
     Whep,
     DeckLink,
