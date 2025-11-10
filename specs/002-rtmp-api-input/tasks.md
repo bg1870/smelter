@@ -39,7 +39,7 @@
 - [X] T005 [P] Create RtmpVideoDecoderOptions enum in smelter-api/src/input/rtmp.rs with FfmpegH264 and VulkanH264 variants
 - [X] T006 Implement TryFrom<RtmpInput> for RegisterInputOptions in smelter-api/src/input/rtmp_into.rs with validation logic
 - [X] T007 Add rtmp module declaration to smelter-api/src/input.rs with public re-exports
-- [ ] T008 Verify JSON schema generation includes RtmpInput by running cargo run -p tools --bin generate_json_schema
+- [X] T008 Verify JSON schema generation includes RtmpInput by running cargo run -p tools --bin generate_json_schema
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -133,11 +133,11 @@
 - [ ] T051 [P] Add usage examples to doc comments for common RTMP configurations in smelter-api/src/input/rtmp.rs
 - [ ] T052 [P] Verify all public API items have rustdoc comments in smelter-api/src/input/rtmp.rs
 - [ ] T053 [P] Verify all public API items have rustdoc comments in smelter-api/src/input/rtmp_into.rs
-- [ ] T054 Run cargo clippy on smelter-api crate and fix any warnings
-- [ ] T055 Run cargo test on smelter-api crate and verify all tests pass
-- [ ] T056 Verify JSON schema generation produces correct TypeScript types by running cargo run -p tools --bin generate_json_schema
+- [X] T054 Run cargo clippy on smelter-api crate and fix any warnings
+- [X] T055 Run cargo test on smelter-api crate and verify all tests pass
+- [X] T056 Verify JSON schema generation produces correct TypeScript types by running cargo run -p tools --bin generate_json_schema
 - [ ] T057 Verify TypeScript SDK build succeeds with new types by running pnpm run build in typescript-sdk
-- [ ] T058 [P] Create integration test example in integration-tests/ demonstrating RTMP registration (optional)
+- [X] T058 [P] Create integration test example in integration-tests/ demonstrating RTMP registration (optional)
 - [ ] T059 Cross-reference quickstart.md examples with actual API implementation to verify accuracy
 
 ---
