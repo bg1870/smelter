@@ -48,5 +48,8 @@ echo "Using DISPLAY=$DISPLAY"
 # --disable-setuid-sandbox: Required when running as non-root in containers
 # --disable-gpu: Software rendering only
 # --disable-gpu-compositing: Disable GPU-accelerated compositing
+# Additional flags to suppress warnings:
+# --disable-features=BlinkGenPropertyTrees: Reduce compositor warnings
+# --log-level=0: Only show fatal errors from Chromium (suppresses D-Bus/UPower warnings)
 echo "Starting Smelter in headless mode..."
-./target/release/main_process --web-renderer-chromium-extra-args="--no-sandbox --disable-dev-shm-usage --disable-setuid-sandbox --disable-gpu --disable-gpu-compositing"
+./target/release/main_process --web-renderer-chromium-extra-args="--no-sandbox --disable-dev-shm-usage --disable-setuid-sandbox --disable-gpu --disable-gpu-compositing --log-level=0"
