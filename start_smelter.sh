@@ -20,4 +20,4 @@ cargo build --release --bin main_process --bin process_helper
 
 # Start Smelter
 echo "Starting Smelter..."
-./target/release/main_process
+./target/release/main_process --web-renderer-chromium-extra-args="--ozone-platform=gbm --use-gl=egl --enable-features=UseOzonePlatform --disable-software-rasterizer"
