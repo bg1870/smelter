@@ -31,7 +31,7 @@ pub enum HlsRegisterOptions {
 #[derive(Debug, Deserialize)]
 #[serde(from = "HlsOutputOptions")]
 pub struct HlsOutput {
-    name: String,
+    pub name: String,
     path: PathBuf,
     options: HlsOutputOptions,
     stream_handles: Vec<Child>,
@@ -72,10 +72,6 @@ impl From<HlsOutputOptions> for HlsOutput {
 }
 
 impl HlsOutput {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     pub fn serialize_register(&self, inputs: &[InputHandle]) -> serde_json::Value {
         json!({
             "type": "hls",
@@ -171,16 +167,22 @@ impl HlsOutputBuilder {
 
         match video_selection {
             Some(HlsRegisterOptions::SetVideoStream) => {
+                let mut video = HlsOutputVideoOptions::default();
                 let scene_options = Scene::iter().collect();
                 let scene_choice =
                     Select::new("Select scene:", scene_options).prompt_skippable()?;
-                let video = match scene_choice {
-                    Some(scene) => HlsOutputVideoOptions {
-                        scene,
-                        ..Default::default()
-                    },
-                    None => HlsOutputVideoOptions::default(),
-                };
+                if let Some(scene) = scene_choice {
+                    video.scene = scene;
+                }
+
+                let encoder_options = vec![VideoEncoder::FfmpegH264, VideoEncoder::VulkanH264];
+                let encoder_choice =
+                    Select::new("Select encoder (ESC for ffmpeg_h264):", encoder_options)
+                        .prompt_skippable()?;
+                if let Some(enc) = encoder_choice {
+                    video.encoder = enc;
+                }
+
                 Ok(self.with_video(video))
             }
             Some(HlsRegisterOptions::Skip) | None => Ok(self),
@@ -203,23 +205,17 @@ impl HlsOutputBuilder {
     }
 
     fn prompt_player(self, running_state: RunningState) -> Result<Self> {
-        let (player_options, default_player) = match running_state {
-            RunningState::Running => (
-                vec![OutputPlayer::Ffmpeg, OutputPlayer::Manual],
-                OutputPlayer::Ffmpeg,
-            ),
-            RunningState::Idle => (vec![OutputPlayer::Manual], OutputPlayer::Manual),
+        let player_options = match running_state {
+            RunningState::Running => vec![OutputPlayer::Ffmpeg, OutputPlayer::Manual],
+            RunningState::Idle => vec![OutputPlayer::Manual],
         };
 
-        let player_selection = Select::new(
-            &format!("Select player (ESC for {default_player}):"),
-            player_options,
-        )
-        .prompt_skippable()?;
+        let player_selection =
+            Select::new("Select player (ESC for Manual):", player_options).prompt_skippable()?;
 
         match player_selection {
             Some(player) => Ok(self.with_player(player)),
-            None => Ok(self.with_player(default_player)),
+            None => Ok(self),
         }
     }
 

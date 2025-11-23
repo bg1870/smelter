@@ -19,7 +19,7 @@ const MP4_INPUT_SOURCE: &str = "MP4_INPUT_SOURCE";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "Mp4InputOptions", into = "Mp4InputOptions")]
 pub struct Mp4Input {
-    name: String,
+    pub name: String,
     options: Mp4InputOptions,
 }
 
@@ -50,10 +50,6 @@ impl From<Mp4Input> for Mp4InputOptions {
 }
 
 impl Mp4Input {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     pub fn serialize_register(&self) -> serde_json::Value {
         let Mp4InputOptions {
             ref source,
@@ -86,6 +82,13 @@ impl Mp4InputSource {
             Self::Path(path) => ("path".to_string(), path.to_str().unwrap().to_string()),
         }
     }
+
+    fn path(&self) -> Option<PathBuf> {
+        match self {
+            Self::Path(p) => Some(p.clone()),
+            Self::Url(_) => None,
+        }
+    }
 }
 
 impl FromStr for Mp4InputSource {
@@ -104,8 +107,8 @@ impl FromStr for Mp4InputSource {
 
 pub struct Mp4InputBuilder {
     name: String,
-    source: Option<Mp4InputSource>,
-    decoder: Option<VideoDecoder>,
+    source: Mp4InputSource,
+    decoder: VideoDecoder,
     input_loop: bool,
 }
 
@@ -113,10 +116,11 @@ impl Mp4InputBuilder {
     pub fn new() -> Self {
         let suffix = rand::rng().next_u32();
         let name = format!("mp4_input_{suffix}");
+        let source = Mp4InputSource::Path(integration_tests_root().join(BUNNY_H264_PATH));
         Self {
             name,
-            source: None,
-            decoder: None,
+            source,
+            decoder: VideoDecoder::FfmpegH264,
             input_loop: false,
         }
     }
@@ -127,16 +131,12 @@ impl Mp4InputBuilder {
 
     fn prompt_source(self) -> Result<Self> {
         let env_source = env::var(MP4_INPUT_SOURCE).unwrap_or_default();
-        let default_path = integration_tests_root().join(BUNNY_H264_PATH);
 
         loop {
-            let source_input = Text::new(&format!(
-                "Input path or url (ESC for {}):",
-                default_path.to_str().unwrap(),
-            ))
-            .with_autocomplete(FilePathCompleter::default())
-            .with_initial_value(&env_source)
-            .prompt_skippable()?;
+            let source_input = Text::new("Input path or url (ESC for \"Big Buck Bunny\"):")
+                .with_autocomplete(FilePathCompleter::default())
+                .with_initial_value(&env_source)
+                .prompt_skippable()?;
 
             match source_input {
                 Some(source_str) if !source_str.trim().is_empty() => {
@@ -153,14 +153,13 @@ impl Mp4InputBuilder {
                 Some(_) | None => {
                     info!(
                         "Using default asset at \"{}\"",
-                        default_path.to_str().unwrap()
+                        self.source.path().unwrap().to_str().unwrap(),
                     );
                     download_asset(&AssetData {
                         url: BUNNY_H264_URL.to_string(),
-                        path: default_path.clone(),
+                        path: self.source.path().unwrap(),
                     })?;
-                    let source = Mp4InputSource::Path(default_path);
-                    break Ok(self.with_source(source));
+                    break Ok(self);
                 }
             }
         }
@@ -189,12 +188,12 @@ impl Mp4InputBuilder {
     }
 
     pub fn with_source(mut self, source: Mp4InputSource) -> Self {
-        self.source = Some(source);
+        self.source = source;
         self
     }
 
     pub fn with_decoder(mut self, decoder: VideoDecoder) -> Self {
-        self.decoder = Some(decoder);
+        self.decoder = decoder;
         self
     }
 
@@ -205,8 +204,8 @@ impl Mp4InputBuilder {
 
     pub fn build(self) -> Mp4Input {
         let options = Mp4InputOptions {
-            source: self.source.unwrap(),
-            decoder: self.decoder.unwrap(),
+            source: self.source,
+            decoder: self.decoder,
             input_loop: self.input_loop,
         };
         Mp4Input {

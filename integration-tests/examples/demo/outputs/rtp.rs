@@ -49,7 +49,7 @@ pub enum RtpRegisterOptions {
 #[derive(Debug, Deserialize)]
 #[serde(from = "RtpOutputOptions")]
 pub struct RtpOutput {
-    name: String,
+    pub name: String,
     port: u16,
     options: RtpOutputOptions,
     stream_handles: Vec<Child>,
@@ -91,10 +91,6 @@ impl From<RtpOutputOptions> for RtpOutput {
 }
 
 impl RtpOutput {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     pub fn serialize_register(&self, inputs: &[InputHandle]) -> serde_json::Value {
         let RtpOutputOptions {
             ref video,
@@ -224,7 +220,9 @@ impl RtpOutput {
             Some(v) => {
                 let a = audio.is_some();
                 match v.encoder {
-                    VideoEncoder::FfmpegH264 | VideoEncoder::FfmpegH264LowLatency => self
+                    VideoEncoder::FfmpegH264
+                    | VideoEncoder::FfmpegH264LowLatency
+                    | VideoEncoder::VulkanH264 => self
                         .stream_handles
                         .push(start_gst_receive_tcp_h264(IP, self.port, a)?),
                     VideoEncoder::FfmpegVp8 => self
@@ -256,7 +254,9 @@ impl RtpOutput {
                     ));
                 }
                 match v.encoder {
-                    VideoEncoder::FfmpegH264 | VideoEncoder::FfmpegH264LowLatency => self
+                    VideoEncoder::FfmpegH264
+                    | VideoEncoder::FfmpegH264LowLatency
+                    | VideoEncoder::VulkanH264 => self
                         .stream_handles
                         .push(start_gst_receive_udp_h264(self.port, false)?),
                     VideoEncoder::FfmpegVp8 => self
@@ -292,7 +292,9 @@ impl RtpOutput {
                 ));
             }
             (Some(v), None) => match v.encoder {
-                VideoEncoder::FfmpegH264 | VideoEncoder::FfmpegH264LowLatency => self
+                VideoEncoder::FfmpegH264
+                | VideoEncoder::FfmpegH264LowLatency
+                | VideoEncoder::VulkanH264 => self
                     .stream_handles
                     .push(start_ffmpeg_receive_h264(Some(self.port), None)?),
                 VideoEncoder::FfmpegVp8 => self
@@ -422,28 +424,26 @@ impl RtpOutputBuilder {
     fn prompt_player(self) -> Result<Self> {
         match self.transport_protocol {
             TransportProtocol::Udp => {
-                let (player_options, default_player) = match (&self.video, &self.audio) {
-                    (Some(_), Some(_)) => (vec![OutputPlayer::Manual], OutputPlayer::Manual),
-                    _ => (OutputPlayer::iter().collect(), OutputPlayer::Gstreamer),
+                let player_options = match (&self.video, &self.audio) {
+                    (Some(_), Some(_)) => vec![OutputPlayer::Manual],
+                    _ => OutputPlayer::iter().collect(),
                 };
-                let player_selection = Select::new(
-                    &format!("Select player (ESC for {default_player}):"),
-                    player_options,
-                )
-                .prompt_skippable()?;
+                let player_selection =
+                    Select::new("Select player (ESC for Manual):", player_options)
+                        .prompt_skippable()?;
                 match player_selection {
                     Some(player) => Ok(self.with_player(player)),
-                    None => Ok(self.with_player(default_player)),
+                    None => Ok(self),
                 }
             }
             TransportProtocol::TcpServer => {
                 let player_options = vec![OutputPlayer::Gstreamer, OutputPlayer::Manual];
                 let player_selection =
-                    Select::new("Select player (ESC for GStreamer):", player_options)
+                    Select::new("Select player (ESC for Manual):", player_options)
                         .prompt_skippable()?;
                 match player_selection {
                     Some(player) => Ok(self.with_player(player)),
-                    None => Ok(self.with_player(OutputPlayer::Gstreamer)),
+                    None => Ok(self),
                 }
             }
         }
@@ -605,7 +605,9 @@ fn build_gst_recv_tcp_cmd(video_codec: Option<VideoEncoder>, has_audio: bool, po
     );
 
     let video_cmd = match video_codec {
-        Some(VideoEncoder::FfmpegH264) | Some(VideoEncoder::FfmpegH264LowLatency) => {
+        Some(VideoEncoder::FfmpegH264)
+        | Some(VideoEncoder::FfmpegH264LowLatency)
+        | Some(VideoEncoder::VulkanH264) => {
             "demux.src_96 ! \"application/x-rtp,media=video,clock-rate=90000,encoding-name=H264\" ! queue ! rtph264depay ! decodebin ! videoconvert ! autovideosink "
         }
         Some(VideoEncoder::FfmpegVp8) => {
@@ -638,7 +640,9 @@ fn build_gst_recv_udp_cmd(video_codec: Option<VideoEncoder>, has_audio: bool, po
     );
 
     let video_cmd = match video_codec {
-        Some(VideoEncoder::FfmpegH264) | Some(VideoEncoder::FfmpegH264LowLatency) => {
+        Some(VideoEncoder::FfmpegH264)
+        | Some(VideoEncoder::FfmpegH264LowLatency)
+        | Some(VideoEncoder::VulkanH264) => {
             "demux.src_96 ! \"application/x-rtp,media=video,clock-rate=90000,encoding-name=H264\" ! queue ! rtph264depay ! decodebin ! videoconvert ! autovideosink "
         }
         Some(VideoEncoder::FfmpegVp8) => {

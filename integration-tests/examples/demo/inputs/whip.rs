@@ -26,16 +26,12 @@ pub enum WhipRegisterOptions {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WhipInput {
-    name: String,
+    pub name: String,
     bearer_token: String,
     video: Option<WhipInputVideoOptions>,
 }
 
 impl WhipInput {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     pub fn has_video(&self) -> bool {
         self.video.is_some()
     }
@@ -78,9 +74,11 @@ pub struct WhipInputBuilder {
 
 impl WhipInputBuilder {
     pub fn new() -> Self {
+        let name = Self::generate_name();
+        let bearer_token = "example".to_string();
         Self {
-            name: String::new(),
-            bearer_token: "example".to_string(),
+            name,
+            bearer_token,
             video: None,
         }
     }
@@ -102,7 +100,7 @@ impl WhipInputBuilder {
 
         match name_input {
             Some(name) if !name.trim().is_empty() => Ok(self.with_name(name)),
-            None | Some(_) => Ok(self.with_name(WhipInputBuilder::generate_name())),
+            None | Some(_) => Ok(self),
         }
     }
 

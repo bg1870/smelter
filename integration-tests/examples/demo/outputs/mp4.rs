@@ -31,7 +31,7 @@ pub enum Mp4RegisterOptions {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "Mp4OutputOptions", into = "Mp4OutputOptions")]
 pub struct Mp4Output {
-    name: String,
+    pub name: String,
     options: Mp4OutputOptions,
 }
 
@@ -60,10 +60,6 @@ impl From<Mp4Output> for Mp4OutputOptions {
 }
 
 impl Mp4Output {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     pub fn serialize_register(&self, inputs: &[InputHandle]) -> serde_json::Value {
         let Mp4OutputOptions { path, video, audio } = &self.options;
         json!({
@@ -84,7 +80,7 @@ impl Mp4Output {
 
 pub struct Mp4OutputBuilder {
     name: String,
-    path: Option<PathBuf>,
+    path: PathBuf,
     video: Option<Mp4OutputVideoOptions>,
     audio: Option<Mp4OutputAudioOptions>,
 }
@@ -93,9 +89,10 @@ impl Mp4OutputBuilder {
     pub fn new() -> Self {
         let suffix = rand::rng().next_u32();
         let name = format!("mp4_output_{suffix}");
+        let path = env::current_dir().unwrap().join("example_output.mp4");
         Self {
             name,
-            path: None,
+            path,
             video: None,
             audio: None,
         }
@@ -122,13 +119,10 @@ impl Mp4OutputBuilder {
     fn prompt_path(self) -> Result<Self> {
         let env_path = env::var(MP4_OUTPUT_PATH).unwrap_or_default();
 
-        let default_path = env::current_dir().unwrap().join("example_output.mp4");
-
         loop {
-            let path_output = Text::new("Output path (ESC for default):")
+            let path_output = Text::new("Output path (ESC for \"example_output.mp4\"):")
                 .with_autocomplete(FilePathCompleter::default())
                 .with_initial_value(&env_path)
-                .with_default(default_path.to_str().unwrap())
                 .prompt_skippable()?;
 
             match path_output {
@@ -140,7 +134,7 @@ impl Mp4OutputBuilder {
                         Some(_) | None => error!("Path is not valid"),
                     }
                 }
-                Some(_) | None => break Ok(self.with_path(default_path)),
+                Some(_) | None => break Ok(self),
             }
         }
     }
@@ -151,16 +145,22 @@ impl Mp4OutputBuilder {
 
         match video_selection {
             Some(Mp4RegisterOptions::SetVideoStream) => {
+                let mut video = Mp4OutputVideoOptions::default();
                 let scene_options = Scene::iter().collect();
                 let scene_choice =
                     Select::new("Select scene:", scene_options).prompt_skippable()?;
-                let video = match scene_choice {
-                    Some(scene) => Mp4OutputVideoOptions {
-                        scene,
-                        ..Default::default()
-                    },
-                    None => Mp4OutputVideoOptions::default(),
-                };
+                if let Some(scene) = scene_choice {
+                    video.scene = scene;
+                }
+
+                let encoder_options = vec![VideoEncoder::FfmpegH264, VideoEncoder::VulkanH264];
+                let encoder_choice =
+                    Select::new("Select encoder (ESC for ffmpeg_h264):", encoder_options)
+                        .prompt_skippable()?;
+                if let Some(enc) = encoder_choice {
+                    video.encoder = enc;
+                }
+
                 Ok(self.with_video(video))
             }
             Some(Mp4RegisterOptions::Skip) | None => Ok(self),
@@ -183,7 +183,7 @@ impl Mp4OutputBuilder {
     }
 
     pub fn with_path(mut self, path: PathBuf) -> Self {
-        self.path = Some(path);
+        self.path = path;
         self
     }
 
@@ -199,7 +199,7 @@ impl Mp4OutputBuilder {
 
     pub fn build(self) -> Mp4Output {
         let options = Mp4OutputOptions {
-            path: self.path.unwrap(),
+            path: self.path,
             video: self.video,
             audio: self.audio,
         };

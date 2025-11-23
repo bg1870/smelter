@@ -2,28 +2,38 @@ use std::{sync::Arc, time::Duration};
 
 use smelter_render::{Frame, FrameData, Resolution};
 use tracing::{debug, info, warn};
-use vk_video::parameters::{DecoderParameters, MissedFrameHandling};
-use vk_video::{DecoderError, ParserError, ReferenceManagementError, WgpuTexturesDecoder};
+use vk_video::{
+    DecoderError, ReferenceManagementError, WgpuTexturesDecoder,
+    parameters::{DecoderParameters, DecoderUsageFlags, MissedFrameHandling},
+};
 
-use crate::pipeline::decoder::{VideoDecoder, VideoDecoderInstance};
+use crate::pipeline::decoder::{KeyframeRequestSender, VideoDecoder, VideoDecoderInstance};
 use crate::prelude::*;
 
 pub struct VulkanH264Decoder {
     decoder: WgpuTexturesDecoder,
+    keyframe_request_sender: Option<KeyframeRequestSender>,
 }
 
 impl VideoDecoder for VulkanH264Decoder {
     const LABEL: &'static str = "Vulkan H264 decoder";
 
-    fn new(ctx: &Arc<PipelineCtx>) -> Result<Self, DecoderInitError> {
+    fn new(
+        ctx: &Arc<PipelineCtx>,
+        keyframe_request_sender: Option<KeyframeRequestSender>,
+    ) -> Result<Self, DecoderInitError> {
         match &ctx.graphics_context.vulkan_ctx {
             Some(vulkan_ctx) => {
                 info!("Initializing Vulkan H264 decoder");
                 let device = vulkan_ctx.device.clone();
                 let decoder = device.create_wgpu_textures_decoder(DecoderParameters {
                     missed_frame_handling: MissedFrameHandling::Strict,
+                    usage_flags: DecoderUsageFlags::DEFAULT,
                 })?;
-                Ok(Self { decoder })
+                Ok(Self {
+                    decoder,
+                    keyframe_request_sender,
+                })
             }
             None => Err(DecoderInitError::VulkanContextRequiredForVulkanDecoder),
         }
@@ -39,9 +49,10 @@ impl VideoDecoderInstance for VulkanH264Decoder {
 
         let frames = match self.decoder.decode(chunk) {
             Ok(res) => res,
-            Err(DecoderError::ParserError(ParserError::ReferenceManagementError(
-                ReferenceManagementError::MissingFrame,
-            ))) => {
+            Err(DecoderError::ReferenceManagementError(ReferenceManagementError::MissingFrame)) => {
+                if let Some(s) = self.keyframe_request_sender.as_ref() {
+                    s.send()
+                }
                 debug!("Vulkan H264 decoder detected a missing frame.");
                 return Vec::new();
             }
@@ -60,6 +71,10 @@ impl VideoDecoderInstance for VulkanH264Decoder {
             .into_iter()
             .map(from_vk_frame)
             .collect()
+    }
+
+    fn skip_until_keyframe(&mut self) {
+        self.decoder.mark_missing_data();
     }
 }
 

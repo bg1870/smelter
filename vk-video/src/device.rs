@@ -12,8 +12,10 @@ use crate::device::caps::{
     NativeDecodeProfileCapabilities, NativeEncodeCapabilities,
 };
 use crate::device::queues::{Queue, Queues};
-use crate::parameters::{H264Profile, RateControl};
-use crate::parser::Parser;
+use crate::parameters::{
+    EncoderContentFlags, EncoderTuningMode, EncoderUsageFlags, H264Profile, RateControl,
+};
+use crate::parser::{h264::H264Parser, reference_manager::ReferenceContext};
 use crate::vulkan_decoder::{FrameSorter, VulkanDecoder};
 use crate::vulkan_encoder::{FullEncoderParameters, VulkanEncoder};
 use crate::{
@@ -72,6 +74,11 @@ pub struct DecoderParameters {
     ///
     /// **Defaults to [`MissedFrameHandling::Strict`]**
     pub missed_frame_handling: MissedFrameHandling,
+
+    /// A hint indicating what kind of content the decoder is going to be used for.
+    ///
+    /// Multiple flags can be combined using the `|` operator to indicate multiple usages.
+    pub usage_flags: crate::parameters::DecoderUsageFlags,
 }
 
 /// Things the encoder needs to know about the video
@@ -86,7 +93,8 @@ pub struct VideoParameters {
 /// Parameters for encoder creation
 #[derive(Debug, Clone, Copy)]
 pub struct EncoderParameters {
-    /// Number of frames between IDRs. If [`None`], this will be set to 30.
+    /// Number of frames between IDRs. If [`None`], this will be set to an encoder preferred value,
+    /// or, if the encoder doesn't provide a preferred value, to 30.
     pub idr_period: Option<NonZeroU32>,
     /// See [`RateControl`] for description of different rate control modes. The selected mode must
     /// be supported by the device.
@@ -100,6 +108,19 @@ pub struct EncoderParameters {
     /// [`EncodeH264ProfileCapabilities::quality_levels`](crate::capabilities::EncodeH264ProfileCapabilities::quality_levels)
     pub quality_level: u32,
     pub video_parameters: VideoParameters,
+
+    /// A hint indicating what the encoded content is going to be used for.
+    ///
+    /// Multiple flags can be combined using the `|` operator to indicate multiple usages.
+    pub usage_flags: Option<EncoderUsageFlags>,
+
+    /// A hint indicating how to tune the encoder implementation.
+    pub tuning_mode: Option<EncoderTuningMode>,
+
+    /// A hint indicating what kind of content the encoder is going to be used for.
+    ///
+    /// Multiple flags can be combined using the `|` operator to indicate multiple usages.
+    pub content_flags: Option<EncoderContentFlags>,
 }
 
 /// Open connection to a coding-capable device. Also contains a [`wgpu::Device`], a [`wgpu::Queue`] and
@@ -308,7 +329,8 @@ impl VulkanDevice {
             .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?;
         let max_profile = decode_caps.max_profile();
 
-        let parser = Parser::new(parameters.missed_frame_handling);
+        let parser = H264Parser::default();
+        let reference_ctx = ReferenceContext::new(parameters.missed_frame_handling);
         let decoding_device = DecodingDevice {
             vulkan_device: self.clone(),
             h264_decode_queue: self
@@ -322,11 +344,12 @@ impl VulkanDevice {
                 .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?,
         };
 
-        let vulkan_decoder = VulkanDecoder::new(Arc::new(decoding_device))?;
+        let vulkan_decoder = VulkanDecoder::new(Arc::new(decoding_device), parameters.usage_flags)?;
         let frame_sorter = FrameSorter::<wgpu::Texture>::new();
 
         Ok(WgpuTexturesDecoder {
             parser,
+            reference_ctx,
             vulkan_decoder,
             frame_sorter,
         })
@@ -342,7 +365,8 @@ impl VulkanDevice {
             .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?;
         let max_profile = decode_caps.max_profile();
 
-        let parser = Parser::new(parameters.missed_frame_handling);
+        let parser = H264Parser::default();
+        let reference_ctx = ReferenceContext::new(parameters.missed_frame_handling);
         let decoding_device = DecodingDevice {
             vulkan_device: self.clone(),
             h264_decode_queue: self
@@ -356,11 +380,12 @@ impl VulkanDevice {
                 .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?,
         };
 
-        let vulkan_decoder = VulkanDecoder::new(Arc::new(decoding_device))?;
+        let vulkan_decoder = VulkanDecoder::new(Arc::new(decoding_device), parameters.usage_flags)?;
         let frame_sorter = FrameSorter::<RawFrameData>::new();
 
         Ok(BytesDecoder {
             parser,
+            reference_ctx,
             vulkan_decoder,
             frame_sorter,
         })
@@ -448,6 +473,9 @@ impl VulkanDevice {
             max_references: None,
             rate_control,
             quality_level: 0,
+            usage_flags: Some(EncoderUsageFlags::DEFAULT),
+            content_flags: Some(EncoderContentFlags::DEFAULT),
+            tuning_mode: Some(EncoderTuningMode::LOW_LATENCY),
         })
     }
 
@@ -472,6 +500,9 @@ impl VulkanDevice {
                 .encode_capabilities
                 .max_quality_levels
                 - 1,
+            usage_flags: Some(EncoderUsageFlags::DEFAULT),
+            content_flags: Some(EncoderContentFlags::DEFAULT),
+            tuning_mode: Some(EncoderTuningMode::HIGH_QUALITY),
         })
     }
 
@@ -609,6 +640,16 @@ impl VulkanDevice {
             });
         }
 
+        let usage_flags = encoder_parameters
+            .usage_flags
+            .unwrap_or(vk::VideoEncodeUsageFlagsKHR::DEFAULT);
+        let tuning_mode = encoder_parameters
+            .tuning_mode
+            .unwrap_or(vk::VideoEncodeTuningModeKHR::DEFAULT);
+        let content_flags = encoder_parameters
+            .content_flags
+            .unwrap_or(vk::VideoEncodeContentFlagsKHR::DEFAULT);
+
         Ok(FullEncoderParameters {
             idr_period,
             width,
@@ -618,6 +659,9 @@ impl VulkanDevice {
             quality_level: encoder_parameters.quality_level,
             profile: encoder_parameters.profile,
             framerate,
+            usage_flags,
+            tuning_mode,
+            content_flags,
         })
     }
 

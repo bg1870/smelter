@@ -9,7 +9,10 @@ use tracing::error;
 use crate::{
     RawFrameData,
     device::DecodingDevice,
-    parser::{DecodeInformation, DecoderInstruction, ReferenceId},
+    parser::{
+        decoder_instructions::DecoderInstruction,
+        reference_manager::{DecodeInformation, ReferenceId},
+    },
 };
 use crate::{VulkanCommonError, wrappers::*};
 
@@ -23,6 +26,7 @@ pub struct VulkanDecoder<'a> {
     tracker: DecoderTracker,
     reference_id_to_dpb_slot_index: std::collections::HashMap<ReferenceId, usize>,
     decoding_device: Arc<DecodingDevice>,
+    usage_info: vk::VideoDecodeUsageInfoKHR<'a>,
 }
 
 pub(crate) enum DecoderTrackerWaitState {
@@ -97,7 +101,10 @@ pub enum VulkanDecoderError {
 }
 
 impl VulkanDecoder<'_> {
-    pub fn new(decoding_device: Arc<DecodingDevice>) -> Result<Self, VulkanDecoderError> {
+    pub fn new(
+        decoding_device: Arc<DecodingDevice>,
+        usage_flags: crate::parameters::DecoderUsageFlags,
+    ) -> Result<Self, VulkanDecoderError> {
         let command_buffer_pools = DecoderCommandBufferPools {
             transfer: CommandBufferPool::new(
                 decoding_device.vulkan_device.clone(),
@@ -114,11 +121,14 @@ impl VulkanDecoder<'_> {
             command_buffer_pools,
         )?;
 
+        let usage_info = vk::VideoDecodeUsageInfoKHR::default().video_usage_hints(usage_flags);
+
         Ok(Self {
             decoding_device,
             video_session_resources: None,
             tracker,
             reference_id_to_dpb_slot_index: Default::default(),
+            usage_info,
         })
     }
 }
@@ -221,12 +231,13 @@ impl VulkanDecoder<'_> {
 
     fn process_sps(&mut self, sps: &SeqParameterSet) -> Result<(), VulkanDecoderError> {
         match self.video_session_resources.as_mut() {
-            Some(session) => session.process_sps(sps.clone())?,
+            Some(session) => session.process_sps(sps.clone(), self.usage_info)?,
             None => {
                 self.video_session_resources = Some(VideoSessionResources::new_from_sps(
                     &self.decoding_device,
                     self.tracker.command_buffer_pools.decode.begin_buffer()?,
                     sps.clone(),
+                    self.usage_info,
                     &mut self.tracker,
                 )?)
             }
