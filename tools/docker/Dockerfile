@@ -41,6 +41,12 @@ ENV SMELTER_PROCESS_HELPER_PATH=/home/$USERNAME/smelter/process_helper
 ENV LD_LIBRARY_PATH=/home/$USERNAME/smelter/lib
 ENV XDG_RUNTIME_DIR=/home/$USERNAME/smelter/xdg_runtime
 
+ENV SMELTER_WEB_RENDERER_ENABLE=true
+ENV SMELTER_WEB_RENDERER_GPU_ENABLE=true
+ENV SMELTER_LOGGER_LEVEL="info,wgpu_hal=warn,wgpu_core=warn"
+ENV SMELTER_LOGGER_FORMAT="json"
+ENV RUST_BACKTRACE=1
+
 RUN apt-get update -y -qq && \
   apt-get install -y \
     sudo adduser ffmpeg \
@@ -57,5 +63,7 @@ COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/mai
 COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/process_helper /home/$USERNAME/smelter/process_helper
 COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/lib /home/$USERNAME/smelter/lib
 COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/tools/docker/entrypoint.sh /home/$USERNAME/smelter/entrypoint.sh
+
+EXPOSE 8081
 
 ENTRYPOINT ["./entrypoint.sh"]
