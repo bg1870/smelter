@@ -4,6 +4,7 @@ use crate::{
     pipeline::{
         hls::HlsInput,
         mp4::Mp4Input,
+        rtmp::RtmpServerInput,
         rtp::RtpInput,
         webrtc::{WhepInput, WhipInput},
     },
@@ -25,10 +26,13 @@ pub struct PipelineInput {
 
 pub enum Input {
     Rtp(RtpInput),
+    RtmpServer(RtmpServerInput),
     Mp4(Mp4Input),
     Whip(WhipInput),
     Whep(WhepInput),
     Hls(HlsInput),
+    #[cfg(target_os = "linux")]
+    V4l2(super::v4l2::V4l2Input),
     #[cfg(feature = "decklink")]
     DeckLink(super::decklink::DeckLink),
     RawDataChannel,
@@ -38,10 +42,13 @@ impl Input {
     pub fn kind(&self) -> InputProtocolKind {
         match self {
             Input::Rtp(_input) => InputProtocolKind::Rtp,
+            Input::RtmpServer(_input) => InputProtocolKind::Rtmp,
             Input::Mp4(_input) => InputProtocolKind::Mp4,
             Input::Whip(_input) => InputProtocolKind::Whip,
             Input::Whep(_input) => InputProtocolKind::Whep,
             Input::Hls(_input) => InputProtocolKind::Hls,
+            #[cfg(target_os = "linux")]
+            Input::V4l2(_input) => InputProtocolKind::V4l2,
             #[cfg(feature = "decklink")]
             Input::DeckLink(_input) => InputProtocolKind::DeckLink,
             Input::RawDataChannel => InputProtocolKind::RawDataChannel,
@@ -56,10 +63,13 @@ pub(super) fn new_external_input(
 ) -> Result<(Input, InputInitInfo, QueueDataReceiver), InputInitError> {
     match options {
         ProtocolInputOptions::Rtp(opts) => RtpInput::new_input(ctx, input_ref, opts),
+        ProtocolInputOptions::RtmpServer(opts) => RtmpServerInput::new_input(ctx, input_ref, opts),
         ProtocolInputOptions::Mp4(opts) => Mp4Input::new_input(ctx, input_ref, opts),
         ProtocolInputOptions::Hls(opts) => HlsInput::new_input(ctx, input_ref, opts),
         ProtocolInputOptions::Whip(opts) => WhipInput::new_input(ctx, input_ref, opts),
         ProtocolInputOptions::Whep(opts) => WhepInput::new_input(ctx, input_ref, opts),
+        #[cfg(target_os = "linux")]
+        ProtocolInputOptions::V4l2(opts) => super::v4l2::V4l2Input::new_input(ctx, input_ref, opts),
         #[cfg(feature = "decklink")]
         ProtocolInputOptions::DeckLink(opts) => {
             super::decklink::DeckLink::new_input(ctx, input_ref, opts)

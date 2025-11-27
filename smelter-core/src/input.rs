@@ -11,10 +11,13 @@ pub struct RegisterInputOptions {
 #[derive(Debug, Clone)]
 pub enum ProtocolInputOptions {
     Rtp(RtpInputOptions),
+    RtmpServer(RtmpServerInputOptions),
     Mp4(Mp4InputOptions),
     Hls(HlsInputOptions),
     Whip(WhipInputOptions),
     Whep(WhepInputOptions),
+    #[cfg(target_os = "linux")]
+    V4l2(V4l2InputOptions),
     #[cfg(feature = "decklink")]
     DeckLink(DeckLinkInputOptions),
 }
@@ -49,10 +52,12 @@ pub struct InputInfo {
 #[derive(Debug, Clone, Copy)]
 pub enum InputProtocolKind {
     Rtp,
+    Rtmp,
     Mp4,
     Hls,
     Whip,
     Whep,
+    V4l2,
     DeckLink,
     RawDataChannel,
 }
