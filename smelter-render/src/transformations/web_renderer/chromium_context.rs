@@ -131,8 +131,14 @@ impl libcef::App for ChromiumApp {
         }
         if !self.enable_gpu {
             command_line.append_switch("disable-gpu");
-            // TODO: This is probably only needed in docker container
-            command_line.append_switch("disable-software-rasterizer");
+            command_line.append_switch("disable-gpu-compositing");
+            // Allow software rendering fallback when GPU is disabled
+            // Note: disable-software-rasterizer prevents any rendering when GPU is off
+        } else {
+            // Enable GPU acceleration and bypass blocklist
+            command_line.append_switch("ignore-gpu-blocklist");
+            command_line.append_switch("enable-gpu-rasterization");
+            command_line.append_switch("enable-zero-copy");
         }
 
         command_line.append_switch("disable-dev-shm-usage");
