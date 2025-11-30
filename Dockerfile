@@ -116,6 +116,7 @@ ENV XDG_RUNTIME_DIR=/home/$USERNAME/smelter/xdg_runtime
 # Expose the default HTTP port.  When the container starts, the
 # entrypoint script will launch Smelter, which listens on port 8081.
 EXPOSE 8081
+EXPOSE 1935
 
 # Run the entrypoint script.  It starts a DBus session, then uses
 # xvfb-run to execute the Smelter main process【703617412425487†L1-L10】.
