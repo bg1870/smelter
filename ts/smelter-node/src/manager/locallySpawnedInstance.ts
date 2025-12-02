@@ -20,13 +20,13 @@ import { smelterInstanceLoggerOptions } from '../logger';
 import { getSmelterStatus } from '../getSmelterStatus';
 
 // TODO: This should be changed to `software-mansion/smelter` repo with proper version on ts-sdk release
-const VERSION = `62d73800`;
-const REPO = `smelter-labs/smelter-rc`;
+//const VERSION = `62d73800`;
+//const REPO = `smelter-labs/smelter-rc`;
 
-// const VERSION = `v0.4.1`;
-// const REPO = `software-mansion/smelter`;
+const VERSION = `v0.5.0`;
+const REPO = `software-mansion/smelter`;
 
-type ManagedInstanceOptions = {
+export type LocallySpawnedInstanceOptions = {
   port: number;
   workingdir?: string;
   mainExecutablePath?: string;
@@ -51,7 +51,7 @@ class LocallySpawnedInstanceManager implements SmelterManager {
   private enableWebRenderer?: boolean;
   private childSpawnPromise?: SpawnPromise;
 
-  constructor(opts: ManagedInstanceOptions) {
+  constructor(opts: LocallySpawnedInstanceOptions) {
     this.port = opts.port;
     this.workingdir = opts.workingdir ?? path.join(os.tmpdir(), `smelter-${uuidv4()}`);
     this.mainExecutablePath = opts.mainExecutablePath;
