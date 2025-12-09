@@ -91,6 +91,8 @@ impl WhepVideoEncoderOptions {
                     .unwrap_or_default()
                     .into_iter()
                     .collect(),
+                // Do NOT enable global_header for WebRTC (WHEP) - it causes issues
+                codec_flags: None,
             }),
             WhepVideoEncoderOptions::VulkanH264 { bitrate } => {
                 core::VideoEncoderOptions::VulkanH264(core::VulkanH264EncoderOptions {

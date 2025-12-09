@@ -110,6 +110,9 @@ mod main_module {
                         ("tune".into(), "zerolatency".into()),
                         ("thread_type".into(), "slice".into()),
                     ],
+                    codec_flags: Some(FfmpegH264CodecFlags {
+                        global_header: true,
+                    }),
                 })),
                 audio: None,
                 url: format!("rtmp://127.0.0.1:{PORT}").into(),

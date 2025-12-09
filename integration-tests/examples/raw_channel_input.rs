@@ -67,6 +67,9 @@ fn main() {
                 },
                 pixel_format: OutputPixelFormat::YUV420P,
                 raw_options: vec![],
+                codec_flags: Some(FfmpegH264CodecFlags {
+                    global_header: true,
+                }),
             })),
             audio: None,
         }),

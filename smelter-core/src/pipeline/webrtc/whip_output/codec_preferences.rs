@@ -74,6 +74,7 @@ pub(super) fn resolve_video_preferences(
                             bitrate: None,
                             pixel_format: OutputPixelFormat::YUV420P,
                             raw_options: Vec::new(),
+                            codec_flags: None, // WebRTC doesn't need global_header
                         })
                     },
                 ]

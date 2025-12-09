@@ -95,6 +95,10 @@ impl HlsVideoEncoderOptions {
                     .unwrap_or_default()
                     .into_iter()
                     .collect(),
+                // Enable global_header for HLS streaming
+                codec_flags: Some(core::FfmpegH264CodecFlags {
+                    global_header: true,
+                }),
             }),
             HlsVideoEncoderOptions::VulkanH264 { bitrate } => {
                 core::VideoEncoderOptions::VulkanH264(core::VulkanH264EncoderOptions {

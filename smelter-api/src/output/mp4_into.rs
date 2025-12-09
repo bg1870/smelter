@@ -95,6 +95,8 @@ impl Mp4VideoEncoderOptions {
                     .unwrap_or_default()
                     .into_iter()
                     .collect(),
+                // MP4 file output doesn't require global_header
+                codec_flags: None,
             }),
             Mp4VideoEncoderOptions::VulkanH264 { bitrate } => {
                 core::VideoEncoderOptions::VulkanH264(core::VulkanH264EncoderOptions {

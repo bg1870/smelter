@@ -55,9 +55,15 @@ impl VideoEncoder for FfmpegH264Encoder {
             use ffmpeg_next::ffi;
             (*encoder).color_primaries = ffi::AVColorPrimaries::AVCOL_PRI_BT709;
             (*encoder).color_trc = ffi::AVColorTransferCharacteristic::AVCOL_TRC_BT709;
-            // Set CODEC_FLAG_GLOBAL_HEADER to force SPS/PPS into extradata
-            // This is REQUIRED for streaming protocols like RTMP, HLS, etc.
-            (*encoder).flags |= ffi::AV_CODEC_FLAG_GLOBAL_HEADER as i32;
+
+            // Conditionally set CODEC_FLAG_GLOBAL_HEADER based on codec_flags
+            // This flag forces SPS/PPS into extradata, which is REQUIRED for streaming
+            // protocols like RTMP, HLS, DASH, but may cause issues with WebRTC (WHEP).
+            if let Some(codec_flags) = options.codec_flags {
+                if codec_flags.global_header {
+                    (*encoder).flags |= ffi::AV_CODEC_FLAG_GLOBAL_HEADER as i32;
+                }
+            }
         }
 
         let ffmpeg_options = initialize_ffmpeg_h264_options(ctx, &options, codec_name);

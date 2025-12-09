@@ -48,6 +48,7 @@ fn main() {
                 },
                 pixel_format: OutputPixelFormat::YUV420P,
                 raw_options: vec![],
+                codec_flags: None, // Encoded channel output, destination unknown
             })),
             audio: Some(AudioEncoderOptions::Opus(OpusEncoderOptions {
                 channels: AudioChannels::Stereo,

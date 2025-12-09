@@ -18,6 +18,16 @@ pub enum FfmpegH264EncoderPreset {
     Placebo,
 }
 
+/// Codec-level flags for FFmpeg H264 encoder.
+/// This struct is extensible for future codec flags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct FfmpegH264CodecFlags {
+    /// Enable global header (SPS/PPS in extradata).
+    /// Required for streaming protocols like RTMP, HLS, DASH.
+    /// May cause issues with WebRTC (WHEP) outputs.
+    pub global_header: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FfmpegH264EncoderOptions {
     pub preset: FfmpegH264EncoderPreset,
@@ -25,6 +35,8 @@ pub struct FfmpegH264EncoderOptions {
     pub resolution: Resolution,
     pub pixel_format: OutputPixelFormat,
     pub raw_options: Vec<(Arc<str>, Arc<str>)>,
+    /// Optional codec-level flags. If None, no special codec flags are set.
+    pub codec_flags: Option<FfmpegH264CodecFlags>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
