@@ -1,17 +1,35 @@
 # RTMP Output Debugging Guide
 
+## Overview
+
+This guide documents the fixes applied to enable RTMP streaming in Smelter. The primary issue was the missing `AV_CODEC_FLAG_GLOBAL_HEADER` flag, which RTMP servers require to decode H.264 streams. The solution implements a **protocol-aware conditional flag system** that:
+
+- ✅ Enables `global_header` for streaming protocols (RTMP, HLS, RTP)
+- ✅ Disables `global_header` for WebRTC protocols (WHEP, WHIP) to prevent breakage
+- ✅ Disables `global_header` for file outputs (MP4) where it's not needed
+
+See [RTMP_FIX_SUMMARY.md](./RTMP_FIX_SUMMARY.md) for detailed technical information.
+
 ## Changes Made
 
-### 1. Enhanced Debug Logging
+### 1. Fixed H.264 Global Header Flag (Primary Fix)
+Implemented conditional `AV_CODEC_FLAG_GLOBAL_HEADER` flag that is:
+- **Enabled** for streaming protocols (RTMP, HLS, RTP) - generates SPS/PPS in extradata
+- **Disabled** for WebRTC protocols (WHEP, WHIP) - prevents WebRTC compatibility issues
+- **Disabled** for file outputs (MP4) - not needed for file-based outputs
+
+This fix resolves the root cause: RTMP servers require SPS/PPS headers in extradata to properly decode H.264 streams.
+
+### 2. Enhanced Debug Logging
 Added `SMELTER_FFMPEG_LOGGER_LEVEL="debug"` to `start_smelter_debug.sh` to enable detailed FFmpeg output.
 
-### 2. RTMP-Specific Options
+### 3. RTMP-Specific Options
 Modified `smelter-core/src/pipeline/rtmp/rtmp_output.rs` to add:
 - `flvflags=aac_seq_header_detect` - Better AAC compatibility
 - `rtmp_buffer=3000` - 3 second buffer (standard)
 - `tcp_nodelay=1` - Disable Nagle's algorithm for lower latency
 
-### 3. Improved Error Logging
+### 4. Improved Error Logging
 Added detailed packet-level logging showing:
 - Stream ID
 - PTS/DTS values
@@ -104,7 +122,47 @@ This sends a 10-second test stream using the same encoding settings as Smelter.
 
 ## What Changed in the Code
 
-### File: `smelter-core/src/pipeline/rtmp/rtmp_output.rs`
+### Primary Fix: H.264 Global Header Flag
+
+The root cause of RTMP streaming failures was the missing `AV_CODEC_FLAG_GLOBAL_HEADER` flag, which RTMP requires to properly decode H.264 streams. The fix implements a **conditional approach** that enables this flag only for streaming protocols.
+
+#### 1. New Codec Flags Struct (`smelter-core/src/codecs/h264.rs`)
+
+**Lines 21-29:** Added extensible codec flags struct:
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct FfmpegH264CodecFlags {
+    /// Enable global header (SPS/PPS in extradata).
+    /// Required for streaming protocols like RTMP, HLS, DASH.
+    /// May cause issues with WebRTC (WHEP) outputs.
+    pub global_header: bool,
+}
+```
+
+**Line 39:** Added optional field to `FfmpegH264EncoderOptions`:
+```rust
+pub codec_flags: Option<FfmpegH264CodecFlags>,
+```
+
+#### 2. Conditional Flag Logic (`smelter-core/src/pipeline/encoder/ffmpeg_h264.rs`)
+
+**Lines 59-66:** Conditionally enable global header based on protocol needs:
+```rust
+// Conditionally set CODEC_FLAG_GLOBAL_HEADER based on codec_flags
+if let Some(codec_flags) = options.codec_flags {
+    if codec_flags.global_header {
+        (*encoder).flags |= ffi::AV_CODEC_FLAG_GLOBAL_HEADER as i32;
+    }
+}
+```
+
+#### 3. Protocol-Specific Configuration
+
+- **RTMP, HLS, RTP** (`smelter-api/src/output/*_into.rs`): Enable `global_header`
+- **WHEP, WHIP** (`smelter-api/src/output/*_into.rs`): Disable `global_header` (prevents WebRTC issues)
+- **MP4** (`smelter-api/src/output/mp4_into.rs`): Disable `global_header` (not needed for files)
+
+### Additional Debugging Improvements: `smelter-core/src/pipeline/rtmp/rtmp_output.rs`
 
 **Line 4:** Added `Dictionary` import for RTMP options
 **Line 5:** Added `debug` import for logging
