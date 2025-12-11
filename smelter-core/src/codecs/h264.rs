@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use smelter_render::Resolution;
 
@@ -32,6 +32,7 @@ pub struct FfmpegH264CodecFlags {
 pub struct FfmpegH264EncoderOptions {
     pub preset: FfmpegH264EncoderPreset,
     pub bitrate: Option<VideoEncoderBitrate>,
+    pub keyframe_interval: Duration,
     pub resolution: Resolution,
     pub pixel_format: OutputPixelFormat,
     pub raw_options: Vec<(Arc<str>, Arc<str>)>,
@@ -43,6 +44,7 @@ pub struct FfmpegH264EncoderOptions {
 pub struct VulkanH264EncoderOptions {
     pub resolution: Resolution,
     pub bitrate: Option<VideoEncoderBitrate>,
+    pub keyframe_interval: Duration,
 }
 
 #[derive(Debug, thiserror::Error)]
