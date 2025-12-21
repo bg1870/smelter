@@ -17,6 +17,10 @@ use crate::{config::Config, error::ApiError};
 #[serde(untagged)]
 pub enum Response {
     Ok {},
+    Started {
+        start_timestamp_ms: i64,
+        already_started: bool,
+    },
     RegisteredPort {
         port: Option<u16>,
     },

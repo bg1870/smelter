@@ -63,8 +63,25 @@ pub fn routes(state: Arc<ApiState>) -> Router {
     let font = Router::new().route("/register", post(register_request::handle_font));
 
     async fn handle_start(State(state): State<Arc<ApiState>>) -> Result<Response, ApiError> {
-        Pipeline::start(&state.pipeline()?);
-        Ok(Response::Ok {})
+        let pipeline = state.pipeline()?;
+        match Pipeline::start(&pipeline) {
+            Some(start_timestamp_ms) => Ok(Response::Started {
+                start_timestamp_ms,
+                already_started: false,
+            }),
+            None => {
+                // Pipeline already started, get the existing timestamp
+                let start_timestamp_ms = pipeline
+                    .lock()
+                    .unwrap()
+                    .start_timestamp_ms()
+                    .expect("Pipeline is started but has no start timestamp");
+                Ok(Response::Started {
+                    start_timestamp_ms,
+                    already_started: true,
+                })
+            }
+        }
     }
 
     async fn handle_reset(State(state): State<Arc<ApiState>>) -> Result<Response, ApiError> {

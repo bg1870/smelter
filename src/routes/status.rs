@@ -113,11 +113,14 @@ pub(super) async fn status_handler(
         },
     };
 
+    let start_timestamp_ms = pipeline.start_timestamp_ms();
+
     Ok(axum::Json(json!({
         "instance_id": state.config.instance_id,
         "configuration": configuration,
         "inputs": inputs,
-        "outputs": outputs
+        "outputs": outputs,
+        "start_timestamp_ms": start_timestamp_ms
     }))
     .into_response())
 }

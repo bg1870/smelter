@@ -46,6 +46,8 @@ pub struct Pipeline {
     pub(super) ctx: Arc<PipelineCtx>,
     pub(super) audio_mixer: AudioMixer,
     pub(super) is_started: bool,
+    /// Start timestamp in milliseconds since Unix epoch, set when pipeline is started
+    start_timestamp_ms: Option<i64>,
 
     #[allow(dead_code)]
     // triggers cleanup on drop
@@ -302,13 +304,30 @@ impl Pipeline {
         self.audio_mixer.update_output(output_id, audio)
     }
 
-    pub fn start(pipeline: &Arc<Mutex<Self>>) {
-        let guard = pipeline.lock().unwrap();
+    /// Returns the start timestamp in milliseconds since Unix epoch, or `None` if not started.
+    pub fn start_timestamp_ms(&self) -> Option<i64> {
+        self.start_timestamp_ms
+    }
+
+    /// Starts the pipeline and returns the start timestamp in milliseconds since Unix epoch.
+    /// Returns `None` if the pipeline was already started (use `start_timestamp_ms()` to get
+    /// the existing timestamp).
+    pub fn start(pipeline: &Arc<Mutex<Self>>) -> Option<i64> {
+        let mut guard = pipeline.lock().unwrap();
         if guard.is_started {
             error!("Pipeline already started.");
-            return;
+            return None;
         }
-        info!("Starting pipeline.");
+        guard.is_started = true;
+
+        let start_timestamp_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        guard.start_timestamp_ms = Some(start_timestamp_ms);
+
+        info!("Starting pipeline at timestamp: {}", start_timestamp_ms);
         let (video_sender, video_receiver) = bounded(1);
         let (audio_sender, audio_receiver) = bounded(100);
         guard.queue.start(video_sender, audio_sender);
@@ -318,6 +337,8 @@ impl Pipeline {
 
         let weak_pipeline = Arc::downgrade(pipeline);
         thread::spawn(move || run_audio_mixer_thread(weak_pipeline, audio_receiver));
+
+        Some(start_timestamp_ms)
     }
 
     pub fn inputs(&self) -> impl Iterator<Item = (&InputId, InputInfo)> {
@@ -563,6 +584,7 @@ fn create_pipeline(opts: PipelineOptions) -> Result<Pipeline, InitPipelineError>
         stats_monitor,
         audio_mixer: AudioMixer::new(opts.mixing_sample_rate),
         is_started: false,
+        start_timestamp_ms: None,
         ctx,
         whip_whep_handle,
     };
