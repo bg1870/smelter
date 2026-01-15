@@ -1,32 +1,159 @@
-version: "3.8"
+# =============================================================================
+# Smelter Docker Compose - AWS NVIDIA EC2 Production
+# =============================================================================
+#
+# Usage:
+#   docker-compose up -d                    # Start in background
+#   docker-compose logs -f smelter          # View logs
+#   docker-compose down                     # Stop
+#
+# AWS EC2 Requirements:
+#   - NVIDIA GPU instance (g4dn, g5, p3, p4, etc.)
+#   - NVIDIA Container Toolkit installed
+#   - Docker configured with nvidia runtime
+#
 
 services:
   smelter:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8081:8081"
-    environment:
-      - SMELTER_API_PORT=8081
-      - SMELTER_FORCE_GPU=true
-      - SMELTER_WEB_RENDERER_ENABLE=true
-      - SMELTER_WEB_RENDERER_GPU_ENABLE=true
-      - SMELTER_LOGGER_LEVEL=info,wgpu_hal=warn,wgpu_core=warn
-      - SMELTER_LOGGER_FORMAT=json
-    # GPU access is REQUIRED - uncomment the appropriate option:
+      args:
+        RUST_VERSION: stable
+    image: smelter:latest
+    container_name: smelter
 
-    # For AMD/Intel GPUs:
-    devices:
-      - /dev/dri:/dev/dri
-
-    # For NVIDIA GPUs (requires nvidia-docker2):
+    # =========================================================================
+    # NVIDIA GPU Configuration
+    # =========================================================================
+    runtime: nvidia
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
-              capabilities: [gpu, compute, utility]
+              count: all
+              capabilities:
+                - gpu
+                - compute
+                - utility
+                - video
 
+    # =========================================================================
+    # Network Ports
+    # =========================================================================
+    ports:
+      # HTTP API
+      - "8081:8081"
+      # RTMP streaming
+      - "1935:1935"
+      # WHIP/WHEP (WebRTC)
+      - "9000:9000"
+      # UDP ports for WebRTC (if needed)
+      - "10000-10100:10000-10100/udp"
+
+    # =========================================================================
+    # Environment Variables
+    # =========================================================================
+    environment:
+      # API Configuration
+      - SMELTER_API_PORT=8081
+      - SMELTER_WHIP_WHEP_SERVER_PORT=9000
+      - SMELTER_START_WHIP_WHEP_SERVER=true
+      - SMELTER_STUN_SERVERS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
+
+      # GPU Configuration
+      - SMELTER_FORCE_GPU=true
+      - SMELTER_GPU_DEVICE_DRIVER=nvidia
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video
+
+      # Rendering Configuration
+      - SMELTER_WEB_RENDERER_ENABLE=true
+      - SMELTER_WEB_RENDERER_GPU_ENABLE=true
+      - SMELTER_OUTPUT_FRAMERATE=30
+      - SMELTER_MIXING_SAMPLE_RATE=48000
+      - SMELTER_LOAD_SYSTEM_FONTS=true
+
+      # Performance Tuning
+      - SMELTER_INPUT_BUFFER_DURATION_MS=500
+      - SMELTER_STREAM_FALLBACK_TIMEOUT_MS=2000
+      - SMELTER_NEVER_DROP_OUTPUT_FRAMES=false
+
+      # Production Logging (JSON for CloudWatch)
+      - SMELTER_LOGGER_FORMAT=json
+      - SMELTER_LOGGER_LEVEL=info,wgpu_hal=warn,wgpu_core=warn,webrtc_srtp::session=warn,naga=warn
+      - SMELTER_FFMPEG_LOGGER_LEVEL=warn
+
+    # =========================================================================
+    # Volumes
+    # =========================================================================
+    volumes:
+      # Persist downloads
+      - smelter-downloads:/home/smelter/smelter/downloads
+      # Persist shader cache
+      - smelter-cache:/home/smelter/smelter/.cache
+      # Logs (optional - can also use docker logs)
+      - smelter-logs:/home/smelter/smelter/logs
+
+    # =========================================================================
+    # Health Check
+    # =========================================================================
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # =========================================================================
+    # Resource Limits (adjust based on your EC2 instance)
+    # =========================================================================
+    # Uncomment and adjust for your instance type:
+    # g4dn.xlarge: 4 vCPU, 16GB RAM, 1x T4 GPU (16GB)
+    # g4dn.2xlarge: 8 vCPU, 32GB RAM, 1x T4 GPU (16GB)
+    # g5.xlarge: 4 vCPU, 16GB RAM, 1x A10G GPU (24GB)
+    # g5.2xlarge: 8 vCPU, 32GB RAM, 1x A10G GPU (24GB)
+    #
+    # mem_limit: 14g
+    # cpus: 3.5
+
+    # =========================================================================
+    # Restart Policy
+    # =========================================================================
     restart: unless-stopped
+
+    # =========================================================================
+    # Logging Configuration (for CloudWatch)
+    # =========================================================================
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+        tag: "smelter-{{.Name}}"
+
+    # =========================================================================
+    # Security Options
+    # =========================================================================
+    security_opt:
+      - no-new-privileges:true
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  smelter-downloads:
+    driver: local
+  smelter-cache:
+    driver: local
+  smelter-logs:
+    driver: local
+
+# =============================================================================
+# Networks (optional - for multi-container setups)
+# =============================================================================
+networks:
+  default:
+    name: smelter-network
+    driver: bridge

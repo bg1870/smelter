@@ -1,124 +1,438 @@
-# Smelter Dockerfile
+# =============================================================================
+# Smelter Production Dockerfile
+# Optimized for AWS NVIDIA EC2 instances (g4dn, g5, p3, p4, etc.)
+# =============================================================================
 #
-# This Dockerfile builds a Smelter HTTP server image with
-# web‑rendering support.  It follows the guidance from the official
-# Smelter documentation: the build stage installs build tools, FFmpeg
-# and other libraries (required by Smelter) and compiles the project
-# using cargo with default features (which includes the WebRenderer)
-#【779638992328645†L202-L244】.  The runtime stage installs only the
-# runtime dependencies such as ffmpeg, Xvfb and Mesa drivers and
-# copies the compiled binaries and libraries.  An entrypoint script
-# is used to launch the compositor under Xvfb with a DBus session,
-# mirroring the official full Dockerfile provided by the Smelter
-# project【215809594434415†L0-L70】.
+# Build:
+#   docker build -t smelter:latest .
+#
+# Run on AWS NVIDIA EC2:
+#   docker run --gpus all --runtime=nvidia -p 8081:8081 -p 9000:9000 smelter:latest
+#
+# Run with docker-compose:
+#   docker-compose up -d
+#
 
-# ----- Build stage ---------------------------------------------------
-FROM ubuntu:noble-20250716 AS builder
+# =============================================================================
+# Stage 1: Build Environment
+# =============================================================================
+# Use NVIDIA CUDA image for better GPU driver compatibility on AWS
+FROM nvidia/cuda:12.6.3-devel-ubuntu24.04 AS builder
 
-# Use non‑interactive front‑end for apt
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Smelter uses Rust edition 2024 which requires Rust 1.85+
+# Rust version - Smelter requires Rust 1.85+ (edition 2024)
 ARG RUST_VERSION=stable
 
-# Install development dependencies.  The Smelter docs list FFmpeg,
-# libopus, SSL, pkg‑config and other libraries as prerequisites for
-# building from source【779638992328645†L202-L233】.
+# Install build dependencies
+# - FFmpeg 6.x dev libraries (required by Smelter)
+# - Vulkan SDK for GPU rendering
+# - GTK/X11 libs for CEF (Chromium Embedded Framework)
 RUN apt-get update -y -qq \
     && apt-get install -y --no-install-recommends \
-      build-essential curl ca-certificates git pkg-config cmake libssl-dev libclang-dev sudo \
-      libnss3 libatk1.0-0 libatk-bridge2.0-0 libgdk-pixbuf2.0-0 libgtk-3-0 \
-      libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers \
-      ffmpeg libavcodec-dev libavformat-dev libavfilter-dev \
-      libavdevice-dev libavutil-dev libswscale-dev libswresample-dev libopus-dev \
+        # Build essentials
+        build-essential \
+        curl \
+        ca-certificates \
+        git \
+        pkg-config \
+        cmake \
+        # SSL and development headers
+        libssl-dev \
+        libclang-dev \
+        # FFmpeg development libraries
+        ffmpeg \
+        libavcodec-dev \
+        libavformat-dev \
+        libavfilter-dev \
+        libavdevice-dev \
+        libavutil-dev \
+        libswscale-dev \
+        libswresample-dev \
+        libopus-dev \
+        # Vulkan SDK
+        libvulkan-dev \
+        vulkan-tools \
+        # Mesa drivers (fallback)
+        libegl1-mesa-dev \
+        libgl1-mesa-dri \
+        libxcb-xfixes0-dev \
+        mesa-vulkan-drivers \
+        # GTK/X11 for CEF
+        libnss3 \
+        libatk1.0-0 \
+        libatk-bridge2.0-0 \
+        libgdk-pixbuf2.0-0 \
+        libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust toolchain.  Smelter is written in Rust and compiled with
-# cargo【779638992328645†L202-L244】.
-RUN curl https://sh.rustup.rs -sSf | bash -s -- -y \
+# Install Rust toolchain
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain ${RUST_VERSION} \
     && . "$HOME/.cargo/env" \
-    && rustup install "$RUST_VERSION" \
-    && rustup default "$RUST_VERSION"
-ENV PATH="$PATH:/root/.cargo/bin"
+    && rustup component add rustfmt clippy
 
-# Copy the Smelter project into the build context.  The working
-# directory inside the container is set to the root of the project.
-COPY . /root/project
-WORKDIR /root/project
+ENV PATH="/root/.cargo/bin:$PATH"
 
-# Build the Smelter server with default features.  The default
-# features include the `web-renderer` feature which brings in the
-# Chromium Embedded Framework【406782852827269†L25-L30】.
-RUN cargo build --release
+# Create app directory
+WORKDIR /build
 
-# ----- Runtime stage -------------------------------------------------
-FROM ubuntu:noble-20250716
+# =============================================================================
+# Stage 1.5: Dependency Cache (speeds up rebuilds)
+# =============================================================================
+# Copy only Cargo files first to cache dependencies
+COPY Cargo.toml Cargo.lock ./
+COPY smelter/Cargo.toml smelter/
+COPY smelter-api/Cargo.toml smelter-api/
+COPY smelter-core/Cargo.toml smelter-core/
+COPY smelter-render/Cargo.toml smelter-render/
+COPY smelter-render-wasm/Cargo.toml smelter-render-wasm/
+COPY vk-video/Cargo.toml vk-video/
+COPY rtmp/Cargo.toml rtmp/
+COPY decklink/Cargo.toml decklink/
+COPY integration-tests/Cargo.toml integration-tests/
+COPY generate/Cargo.toml generate/
+COPY libcef/Cargo.toml libcef/
+
+# Create dummy src files for dependency compilation
+RUN mkdir -p smelter/src smelter-api/src smelter-core/src smelter-render/src \
+             smelter-render-wasm/src vk-video/src rtmp/src decklink/src \
+             integration-tests/src generate/src libcef/src \
+    && echo "fn main() {}" > smelter/src/main.rs \
+    && echo "pub fn dummy() {}" > smelter-api/src/lib.rs \
+    && echo "pub fn dummy() {}" > smelter-core/src/lib.rs \
+    && echo "pub fn dummy() {}" > smelter-render/src/lib.rs \
+    && echo "pub fn dummy() {}" > smelter-render-wasm/src/lib.rs \
+    && echo "pub fn dummy() {}" > vk-video/src/lib.rs \
+    && echo "pub fn dummy() {}" > rtmp/src/lib.rs \
+    && echo "pub fn dummy() {}" > decklink/src/lib.rs \
+    && echo "pub fn dummy() {}" > generate/src/lib.rs \
+    && echo "pub fn dummy() {}" > libcef/src/lib.rs \
+    && echo "fn main() {}" > integration-tests/src/main.rs
+
+# Pre-build dependencies (this layer is cached)
+RUN cargo build --release 2>/dev/null || true
+
+# =============================================================================
+# Stage 2: Full Build
+# =============================================================================
+# Copy full source code
+COPY . /build
+
+# Build release binaries
+RUN cargo build --release --bin main_process --bin process_helper
+
+# Strip debug symbols to reduce binary size
+RUN strip --strip-unneeded /build/target/release/main_process \
+    && strip --strip-unneeded /build/target/release/process_helper
+
+# =============================================================================
+# Stage 3: Production Runtime
+# =============================================================================
+FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04
 
 LABEL org.opencontainers.image.source="https://github.com/software-mansion/smelter"
+LABEL org.opencontainers.image.description="Smelter - Real-time video composition toolkit"
+LABEL org.opencontainers.image.vendor="Software Mansion"
 
-# NOTE: This container REQUIRES GPU access at runtime because Smelter
-# requires the TEXTURE_BINDING_ARRAY WGPU feature which is not supported
-# by software renderers (llvmpipe/lavapipe).
-#
-# Run with GPU access:
-#   AMD/Intel: docker run --device /dev/dri <image-name>
-#   NVIDIA:    docker run --gpus all --runtime=nvidia <image-name>
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# =============================================================================
+# NVIDIA GPU Configuration for AWS EC2
+# =============================================================================
+# Required for NVIDIA Container Toolkit on AWS
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video
+ENV NVIDIA_REQUIRE_CUDA="cuda>=12.0"
+
+# Vulkan configuration for NVIDIA
+ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+ENV VK_LAYER_PATH=/usr/share/vulkan/explicit_layer.d
+
+# =============================================================================
+# Runtime Dependencies
+# =============================================================================
 ENV DEBIAN_FRONTEND=noninteractive
-ENV NVIDIA_DRIVER_CAPABILITIES="compute,graphics,utility"
 
-# Create a non‑root user who will run the process.  Using a regular
-# user improves security.
-ARG USERNAME=smelter
-
-# Install runtime dependencies.  The runtime image needs ffmpeg for
-# media handling and the GTK and X11 libraries for CEF.  We also
-# install `sudo` and `adduser` for user management and `xvfb` for
-# headless X11 display【215809594434415†L30-L70】.
 RUN apt-get update -y -qq \
     && apt-get install -y --no-install-recommends \
-      sudo adduser ffmpeg libnss3 libatk1.0-0 libatk-bridge2.0-0 \
-      libgdk-pixbuf2.0-0 libgtk-3-0 xvfb dbus \
-    && rm -rf /var/lib/apt/lists/*
+        # Process management
+        sudo \
+        dbus \
+        dbus-x11 \
+        # FFmpeg runtime
+        ffmpeg \
+        # X11/Display for headless rendering
+        xvfb \
+        x11-utils \
+        # GTK/CEF dependencies
+        libnss3 \
+        libatk1.0-0 \
+        libatk-bridge2.0-0 \
+        libgdk-pixbuf2.0-0 \
+        libgtk-3-0 \
+        libgbm1 \
+        libasound2t64 \
+        # Vulkan runtime
+        libvulkan1 \
+        mesa-vulkan-drivers \
+        vulkan-tools \
+        # Networking tools
+        curl \
+        ca-certificates \
+        # Font support
+        fontconfig \
+        fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -fv
 
-# After installing sudo, create a new user and grant it password‑less
-# sudo privileges.  We avoid using `adduser` since it may not be
-# available in minimal images.
-RUN useradd -ms /bin/bash "$USERNAME" \
-    && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
-    && mkdir -p \
-      /home/"$USERNAME"/smelter \
-      /home/"$USERNAME"/smelter/lib \
-      /home/"$USERNAME"/smelter/xdg_runtime
+# =============================================================================
+# User Setup (security best practice)
+# =============================================================================
+ARG USERNAME=smelter
+ARG USER_UID=1000
+ARG USER_GID=1000
 
-# Copy compiled binaries and dynamic libraries from the builder stage.
-# Set ownership to the smelter user and make binaries executable.
-COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/main_process /home/$USERNAME/smelter/main_process
-COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/process_helper /home/$USERNAME/smelter/process_helper
-COPY --from=builder --chown=$USERNAME:$USERNAME /root/project/target/release/lib /home/$USERNAME/smelter/lib
+RUN groupadd --gid ${USER_GID} ${USERNAME} \
+    && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${USERNAME} \
+    && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/${USERNAME} \
+    && chmod 0440 /etc/sudoers.d/${USERNAME}
 
-# Copy the entrypoint script into the image.  This script starts the
-# DBus service and launches the Smelter compositor under Xvfb as
-# performed by the official Dockerfile【215809594434415†L60-L69】.
-COPY --chmod=755 --chown=$USERNAME:$USERNAME tools/docker/entrypoint.sh /home/$USERNAME/smelter/entrypoint.sh
+# Create application directories
+RUN mkdir -p \
+        /home/${USERNAME}/smelter/lib \
+        /home/${USERNAME}/smelter/logs \
+        /home/${USERNAME}/smelter/xdg_runtime \
+        /home/${USERNAME}/smelter/downloads \
+        /home/${USERNAME}/smelter/.cache \
+    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 
-# Switch to the non-root user and set working directory
-USER "$USERNAME"
-WORKDIR /home/"$USERNAME"/smelter
+# =============================================================================
+# Copy Binaries from Builder
+# =============================================================================
+COPY --from=builder --chown=${USERNAME}:${USERNAME} \
+    /build/target/release/main_process \
+    /home/${USERNAME}/smelter/main_process
 
-# Set environment variables required by Smelter.  The compositor uses
-# these variables to locate its helper processes and libraries.
-ENV SMELTER_MAIN_EXECUTABLE_PATH=/home/$USERNAME/smelter/main_process
-ENV SMELTER_PROCESS_HELPER_PATH=/home/$USERNAME/smelter/process_helper
-ENV LD_LIBRARY_PATH=/home/$USERNAME/smelter/lib
-ENV XDG_RUNTIME_DIR=/home/$USERNAME/smelter/xdg_runtime
+COPY --from=builder --chown=${USERNAME}:${USERNAME} \
+    /build/target/release/process_helper \
+    /home/${USERNAME}/smelter/process_helper
 
-# Expose the default HTTP port.  When the container starts, the
-# entrypoint script will launch Smelter, which listens on port 8081.
+COPY --from=builder --chown=${USERNAME}:${USERNAME} \
+    /build/target/release/lib \
+    /home/${USERNAME}/smelter/lib
+
+# Make binaries executable
+RUN chmod +x /home/${USERNAME}/smelter/main_process \
+    && chmod +x /home/${USERNAME}/smelter/process_helper
+
+# =============================================================================
+# Smelter Configuration (Production Defaults)
+# =============================================================================
+# Binary paths
+ENV SMELTER_MAIN_EXECUTABLE_PATH=/home/${USERNAME}/smelter/main_process
+ENV SMELTER_PROCESS_HELPER_PATH=/home/${USERNAME}/smelter/process_helper
+ENV LD_LIBRARY_PATH=/home/${USERNAME}/smelter/lib
+
+# XDG runtime for DBus
+ENV XDG_RUNTIME_DIR=/home/${USERNAME}/smelter/xdg_runtime
+
+# API Configuration
+ENV SMELTER_API_PORT=8081
+ENV SMELTER_WHIP_WHEP_SERVER_PORT=9000
+ENV SMELTER_START_WHIP_WHEP_SERVER=true
+
+# GPU Configuration
+ENV SMELTER_FORCE_GPU=true
+ENV SMELTER_GPU_DEVICE_DRIVER=nvidia
+
+# Rendering Configuration
+ENV SMELTER_WEB_RENDERER_ENABLE=true
+ENV SMELTER_WEB_RENDERER_GPU_ENABLE=true
+ENV SMELTER_OUTPUT_FRAMERATE=30
+ENV SMELTER_MIXING_SAMPLE_RATE=48000
+ENV SMELTER_LOAD_SYSTEM_FONTS=true
+
+# Production Logging (JSON for CloudWatch/ELK)
+ENV SMELTER_LOGGER_FORMAT=json
+ENV SMELTER_LOGGER_LEVEL="info,wgpu_hal=warn,wgpu_core=warn,webrtc_srtp::session=warn,naga=warn"
+ENV SMELTER_FFMPEG_LOGGER_LEVEL=warn
+
+# Download directory
+ENV SMELTER_DOWNLOAD_DIR=/home/${USERNAME}/smelter/downloads
+
+# Shader cache
+ENV __GL_SHADER_DISK_CACHE=1
+ENV __GL_SHADER_DISK_CACHE_PATH=/home/${USERNAME}/smelter/.cache
+
+# =============================================================================
+# Entrypoint Script
+# =============================================================================
+COPY --chmod=755 <<'ENTRYPOINT_SCRIPT' /home/${USERNAME}/smelter/entrypoint.sh
+#!/usr/bin/env bash
+set -eo pipefail
+
+# =============================================================================
+# Smelter Production Entrypoint
+# Optimized for AWS NVIDIA EC2 instances
+# =============================================================================
+
+log() {
+    echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*"
+}
+
+# -----------------------------------------------------------------------------
+# GPU Verification
+# -----------------------------------------------------------------------------
+verify_gpu() {
+    log "Verifying NVIDIA GPU access..."
+
+    if command -v nvidia-smi &>/dev/null; then
+        nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader || true
+    else
+        log "WARNING: nvidia-smi not available"
+    fi
+
+    # Check Vulkan
+    if command -v vulkaninfo &>/dev/null; then
+        vulkaninfo --summary 2>/dev/null | grep -E "(GPU|deviceName)" || true
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# DBus Setup (required for CEF/Chromium)
+# -----------------------------------------------------------------------------
+setup_dbus() {
+    log "Setting up DBus session..."
+
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+
+    # Ensure runtime directory exists with correct permissions
+    mkdir -p "${XDG_RUNTIME_DIR}"
+    chmod 700 "${XDG_RUNTIME_DIR}"
+
+    # Start system dbus if not running
+    if ! pgrep -x dbus-daemon &>/dev/null; then
+        sudo service dbus start 2>/dev/null || true
+    fi
+
+    # Start session dbus
+    dbus-daemon --session --address="${DBUS_SESSION_BUS_ADDRESS}" --nofork --nopidfile --syslog-only &
+    DBUS_PID=$!
+
+    # Wait for DBus to be ready
+    sleep 1
+
+    log "DBus session started (PID: ${DBUS_PID})"
+}
+
+# -----------------------------------------------------------------------------
+# Signal Handlers
+# -----------------------------------------------------------------------------
+cleanup() {
+    log "Received shutdown signal, cleaning up..."
+
+    # Kill main process gracefully
+    if [[ -n "${MAIN_PID:-}" ]]; then
+        kill -TERM "${MAIN_PID}" 2>/dev/null || true
+        wait "${MAIN_PID}" 2>/dev/null || true
+    fi
+
+    # Kill DBus
+    if [[ -n "${DBUS_PID:-}" ]]; then
+        kill -TERM "${DBUS_PID}" 2>/dev/null || true
+    fi
+
+    log "Cleanup complete"
+    exit 0
+}
+
+trap cleanup SIGTERM SIGINT SIGQUIT
+
+# -----------------------------------------------------------------------------
+# Health Check Endpoint (for AWS ALB/ECS)
+# -----------------------------------------------------------------------------
+wait_for_health() {
+    local max_attempts=30
+    local attempt=0
+
+    while [[ ${attempt} -lt ${max_attempts} ]]; do
+        if curl -sf "http://localhost:${SMELTER_API_PORT}/status" &>/dev/null; then
+            log "Health check passed"
+            return 0
+        fi
+        ((attempt++))
+        sleep 1
+    done
+
+    log "WARNING: Health check did not pass within ${max_attempts} seconds"
+    return 1
+}
+
+# -----------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------
+main() {
+    log "Starting Smelter (AWS NVIDIA EC2 optimized)"
+    log "  API Port: ${SMELTER_API_PORT}"
+    log "  WHIP/WHEP Port: ${SMELTER_WHIP_WHEP_SERVER_PORT}"
+    log "  Web Renderer: ${SMELTER_WEB_RENDERER_ENABLE}"
+    log "  GPU Driver: ${SMELTER_GPU_DEVICE_DRIVER:-auto}"
+
+    verify_gpu
+    setup_dbus
+
+    log "Launching Smelter under Xvfb..."
+
+    # Launch under Xvfb for headless X11
+    # -a: auto-select display number
+    # -s: screen configuration (24-bit color)
+    xvfb-run -a -s "-screen 0 1920x1080x24" "${SMELTER_MAIN_EXECUTABLE_PATH}" &
+    MAIN_PID=$!
+
+    log "Smelter started (PID: ${MAIN_PID})"
+
+    # Wait for health check in background
+    wait_for_health &
+
+    # Wait for main process
+    wait "${MAIN_PID}"
+    exit_code=$?
+
+    log "Smelter exited with code: ${exit_code}"
+    exit ${exit_code}
+}
+
+main "$@"
+ENTRYPOINT_SCRIPT
+
+# Fix ownership of entrypoint
+RUN chown ${USERNAME}:${USERNAME} /home/${USERNAME}/smelter/entrypoint.sh
+
+# =============================================================================
+# Switch to Non-root User
+# =============================================================================
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}/smelter
+
+# =============================================================================
+# Health Check (for AWS ECS/EKS/ALB)
+# =============================================================================
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -sf http://localhost:${SMELTER_API_PORT}/status || exit 1
+
+# =============================================================================
+# Expose Ports
+# =============================================================================
+# HTTP API
 EXPOSE 8081
+# RTMP (streaming)
 EXPOSE 1935
+# WHIP/WHEP (WebRTC)
 EXPOSE 9000
 
-# Run the entrypoint script.  It starts a DBus session, then uses
-# xvfb-run to execute the Smelter main process【703617412425487†L1-L10】.
+# =============================================================================
+# Entry Point
+# =============================================================================
 ENTRYPOINT ["./entrypoint.sh"]
