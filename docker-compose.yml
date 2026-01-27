@@ -14,145 +14,85 @@
 #
 
 services:
-  smelter:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        RUST_VERSION: stable
+  smelter-server1:
     image: smelter:latest
-    container_name: smelter
+    container_name: smelter-server1
+    restart: unless-stopped
 
-    # =========================================================================
-    # NVIDIA GPU Configuration
-    # =========================================================================
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities:
-                - gpu
-                - compute
-                - utility
-                - video
+    # GPU (works with docker compose)
+    gpus: all
 
-    # =========================================================================
-    # Network Ports
-    # =========================================================================
-    ports:
-      # HTTP API
-      - "8081:8081"
-      # RTMP streaming
-      - "1935:1935"
-      # WHIP/WHEP (WebRTC)
-      - "9000:9000"
-      # UDP ports for WebRTC (if needed)
-      - "10000-10100:10000-10100/udp"
+    # Internal ports only (no host bindings)
+    expose:
+      - "8081"  # HTTP API
+      - "9000"  # WHIP/WHEP
+      - "1935"  # RTMP ingest (nginx-rtmp pushes here)
 
-    # =========================================================================
-    # Environment Variables
-    # =========================================================================
     environment:
-      # API Configuration
       - SMELTER_API_PORT=8081
       - SMELTER_WHIP_WHEP_SERVER_PORT=9000
       - SMELTER_START_WHIP_WHEP_SERVER=true
       - SMELTER_STUN_SERVERS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
 
-      # GPU Configuration
       - SMELTER_FORCE_GPU=true
       - SMELTER_GPU_DEVICE_DRIVER=nvidia
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video
 
-      # Rendering Configuration
       - SMELTER_WEB_RENDERER_ENABLE=true
       - SMELTER_WEB_RENDERER_GPU_ENABLE=true
       - SMELTER_OUTPUT_FRAMERATE=30
       - SMELTER_MIXING_SAMPLE_RATE=48000
       - SMELTER_LOAD_SYSTEM_FONTS=true
 
-      # Performance Tuning
       - SMELTER_INPUT_BUFFER_DURATION_MS=500
       - SMELTER_STREAM_FALLBACK_TIMEOUT_MS=2000
       - SMELTER_NEVER_DROP_OUTPUT_FRAMES=false
 
-      # Production Logging (JSON for CloudWatch)
       - SMELTER_LOGGER_FORMAT=json
       - SMELTER_LOGGER_LEVEL=info,wgpu_hal=warn,wgpu_core=warn,webrtc_srtp::session=warn,naga=warn
       - SMELTER_FFMPEG_LOGGER_LEVEL=warn
 
-    # =========================================================================
-    # Volumes
-    # =========================================================================
     volumes:
-      # Persist downloads
-      - smelter-downloads:/home/smelter/smelter/downloads
-      # Persist shader cache
-      - smelter-cache:/home/smelter/smelter/.cache
-      # Logs (optional - can also use docker logs)
-      - smelter-logs:/home/smelter/smelter/logs
+      - smelter-server1-downloads:/home/smelter/smelter/downloads
+      - smelter-server1-cache:/home/smelter/smelter/.cache
+      - smelter-server1-logs:/home/smelter/smelter/logs
 
-    # =========================================================================
-    # Health Check
-    # =========================================================================
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8081/status"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/status >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 
-    # =========================================================================
-    # Resource Limits (adjust based on your EC2 instance)
-    # =========================================================================
-    # Uncomment and adjust for your instance type:
-    # g4dn.xlarge: 4 vCPU, 16GB RAM, 1x T4 GPU (16GB)
-    # g4dn.2xlarge: 8 vCPU, 32GB RAM, 1x T4 GPU (16GB)
-    # g5.xlarge: 4 vCPU, 16GB RAM, 1x A10G GPU (24GB)
-    # g5.2xlarge: 8 vCPU, 32GB RAM, 1x A10G GPU (24GB)
-    #
-    # mem_limit: 14g
-    # cpus: 3.5
+    # Traefik routing (Traefik must be on stream_net too)
+    labels:
+      - "traefik.enable=true"
 
-    # =========================================================================
-    # Restart Policy
-    # =========================================================================
-    restart: unless-stopped
+      # API (8081) -> https://YOUR_DOMAIN/server1
+      - "traefik.http.routers.smelter-server1-api.rule=Host(`YOUR_DOMAIN`) && PathPrefix(`/server1`)"
+      - "traefik.http.routers.smelter-server1-api.entrypoints=websecure"
+      - "traefik.http.routers.smelter-server1-api.tls=true"
+      - "traefik.http.middlewares.smelter-server1-api-strip.stripprefix.prefixes=/server1"
+      - "traefik.http.routers.smelter-server1-api.middlewares=smelter-server1-api-strip"
+      - "traefik.http.services.smelter-server1-api.loadbalancer.server.port=8081"
 
-    # =========================================================================
-    # Logging Configuration (for CloudWatch)
-    # =========================================================================
-    logging:
-      driver: json-file
-      options:
-        max-size: "100m"
-        max-file: "5"
-        tag: "smelter-{{.Name}}"
+      # WHIP/WHEP (9000) -> https://YOUR_DOMAIN/server1-webrtc
+      - "traefik.http.routers.smelter-server1-webrtc.rule=Host(`YOUR_DOMAIN`) && PathPrefix(`/server1-webrtc`)"
+      - "traefik.http.routers.smelter-server1-webrtc.entrypoints=websecure"
+      - "traefik.http.routers.smelter-server1-webrtc.tls=true"
+      - "traefik.http.middlewares.smelter-server1-webrtc-strip.stripprefix.prefixes=/server1-webrtc"
+      - "traefik.http.routers.smelter-server1-webrtc.middlewares=smelter-server1-webrtc-strip"
+      - "traefik.http.services.smelter-server1-webrtc.loadbalancer.server.port=9000"
 
-    # =========================================================================
-    # Security Options
-    # =========================================================================
-    security_opt:
-      - no-new-privileges=true
+    networks:
+      - stream_net
 
-# =============================================================================
-# Volumes
-# =============================================================================
 volumes:
-  smelter-downloads:
-    driver: local
-  smelter-cache:
-    driver: local
-  smelter-logs:
-    driver: local
+  smelter-server1-downloads:
+  smelter-server1-cache:
+  smelter-server1-logs:
 
-# =============================================================================
-# Networks (optional - for multi-container setups)
-# =============================================================================
 networks:
-  default:
-    name: smelter-network
-    driver: bridge
+  stream_net:
+    external: true
