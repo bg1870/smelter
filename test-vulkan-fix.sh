@@ -1,48 +1,7 @@
 #!/bin/bash
 # Quick test to verify Vulkan fix - run on EC2
 
-echo "=========================================="
-echo "1. Check what nvidia-container-cli exposes"
-echo "=========================================="
-nvidia-container-cli info 2>/dev/null || echo "nvidia-container-cli not found"
-
-echo ""
-echo "=========================================="
-echo "2. Test with explicit capabilities"
-echo "=========================================="
-docker run --rm --gpus all \
-    -e NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility,video,display \
-    nvidia/cuda:12.6.3-runtime-ubuntu24.04 \
-    bash -c '
-        echo "--- All NVIDIA libs injected ---"
-        ldconfig -p | grep -i nvidia
-    '
-
-echo ""
-echo "=========================================="
-echo "3. Test with --privileged (full access)"
-echo "=========================================="
-docker run --rm --gpus all --privileged \
-    -e NVIDIA_DRIVER_CAPABILITIES=all \
-    -v /dev:/dev \
-    nvidia/cuda:12.6.3-runtime-ubuntu24.04 \
-    bash -c '
-        apt-get update -qq
-        apt-get install -y -qq libx11-6 libxext6 libvulkan1 vulkan-tools >/dev/null 2>&1
-
-        echo "--- NVIDIA libs ---"
-        ldconfig -p | grep -i nvidia | grep -iE "(vulkan|glx|producer)"
-
-        echo ""
-        echo "--- Check if vulkan producer exists anywhere ---"
-        find /usr -name "*vulkan*producer*" 2>/dev/null || echo "Not found in /usr"
-        find /lib* -name "*vulkan*producer*" 2>/dev/null || echo "Not found in /lib"
-    '
-
-echo ""
-echo "=========================================="
-echo "4. Mount host NVIDIA libs directly"
-echo "=========================================="
+echo "Testing with libnvidia-vulkan-producer + libEGL..."
 docker run --rm --gpus all \
     -e NVIDIA_DRIVER_CAPABILITIES=all \
     -v /usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so:/usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so:ro \
@@ -50,11 +9,11 @@ docker run --rm --gpus all \
     nvidia/cuda:12.6.3-runtime-ubuntu24.04 \
     bash -c '
         apt-get update -qq
-        apt-get install -y -qq libx11-6 libxext6 libvulkan1 vulkan-tools >/dev/null 2>&1
+        apt-get install -y -qq libx11-6 libxext6 libvulkan1 vulkan-tools libegl1 libgl1 libglx0 libglvnd0 >/dev/null 2>&1
         ldconfig
 
-        echo "--- Check vulkan producer ---"
-        ls -la /usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer* 2>/dev/null
+        echo "--- Check dependencies of vulkan-producer ---"
+        ldd /usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so 2>&1 | grep "not found" || echo "All deps OK"
 
         echo ""
         mkdir -p /etc/vulkan/icd.d
@@ -69,5 +28,5 @@ docker run --rm --gpus all \
 EOF
 
         echo "--- vulkaninfo ---"
-        vulkaninfo --summary 2>&1
+        vulkaninfo --summary 2>&1 | head -50
     '
