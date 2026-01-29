@@ -179,6 +179,11 @@ RUN apt-get update -y -qq \
         libxdmcp6 \
         libxfixes3 \
         libxxf86vm1 \
+        # EGL/GL libraries required by libnvidia-vulkan-producer
+        libegl1 \
+        libgl1 \
+        libglx0 \
+        libglvnd0 \
         # GTK/CEF dependencies
         libnss3 \
         libatk1.0-0 \
@@ -314,47 +319,33 @@ verify_gpu() {
         log "WARNING: nvidia-smi not available"
     fi
 
-    # Setup Vulkan ICD for NVIDIA - check multiple possible locations
-    local icd_locations=(
-        "/usr/share/vulkan/icd.d/nvidia_icd.json"
-        "/etc/vulkan/icd.d/nvidia_icd.json"
-        "/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json"
-        "/etc/vulkan/icd.d/nvidia_icd.x86_64.json"
-    )
+    # Create custom Vulkan ICD pointing to libnvidia-vulkan-producer.so
+    # (The NVIDIA container toolkit doesn't inject this library, so we mount it)
+    log "Setting up Vulkan ICD for NVIDIA..."
+    sudo mkdir -p /etc/vulkan/icd.d
+    sudo tee /etc/vulkan/icd.d/nvidia_icd.json > /dev/null << 'ICDEOF'
+{
+    "file_format_version" : "1.0.0",
+    "ICD": {
+        "library_path": "/usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so",
+        "api_version" : "1.3.242"
+    }
+}
+ICDEOF
+    export VK_ICD_FILENAMES="/etc/vulkan/icd.d/nvidia_icd.json"
+    log "Created Vulkan ICD at /etc/vulkan/icd.d/nvidia_icd.json"
 
-    local found_icd=""
-    for icd_path in "${icd_locations[@]}"; do
-        if [ -f "${icd_path}" ]; then
-            found_icd="${icd_path}"
-            break
-        fi
-    done
-
-    if [ -n "${found_icd}" ]; then
-        export VK_ICD_FILENAMES="${found_icd}"
-        log "Found NVIDIA Vulkan ICD at ${found_icd}"
-        # Show ICD contents for debugging
-        log "ICD contents:"
-        cat "${found_icd}" 2>/dev/null || true
+    # Verify the vulkan producer library is available
+    if [ -f "/usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so" ]; then
+        log "Found libnvidia-vulkan-producer.so"
     else
-        log "WARNING: NVIDIA Vulkan ICD not found in standard locations"
-        log "Searching for any nvidia ICD files..."
-        find /usr/share/vulkan /etc/vulkan -name "*nvidia*.json" 2>/dev/null || true
-        # Don't set VK_ICD_FILENAMES, let Vulkan auto-discover
-        unset VK_ICD_FILENAMES
+        log "WARNING: libnvidia-vulkan-producer.so not found - Vulkan may not work"
     fi
-
-    # Verify NVIDIA libraries are available
-    log "Checking for NVIDIA Vulkan libraries..."
-    ldconfig -p 2>/dev/null | grep -i "nvidia" | head -5 || true
-
-    # List LD_LIBRARY_PATH for debugging
-    log "LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-not set}"
 
     # Check Vulkan devices
     if command -v vulkaninfo &>/dev/null; then
         log "Checking Vulkan devices..."
-        vulkaninfo --summary 2>&1 | head -30 || {
+        vulkaninfo --summary 2>&1 | grep -E "(deviceName|deviceType|vendorID)" | head -10 || {
             log "WARNING: vulkaninfo failed or found no GPU devices"
         }
     fi

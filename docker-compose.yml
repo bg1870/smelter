@@ -74,8 +74,9 @@ services:
       - smelter-server1-downloads:/home/smelter/smelter/downloads
       - smelter-server1-cache:/home/smelter/smelter/.cache
       - smelter-server1-logs:/home/smelter/smelter/logs
-      # Mount NVIDIA Vulkan ICD files from host
-      - /usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro
+      # Mount NVIDIA Vulkan producer library from host (not injected by container toolkit)
+      - /usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so:/usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so:ro
+      - /usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so.535.288.01:/usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so.535.288.01:ro
 
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/status"]
