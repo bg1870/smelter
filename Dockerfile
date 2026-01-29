@@ -169,6 +169,16 @@ RUN apt-get update -y -qq \
         # X11/Display for headless rendering
         xvfb \
         x11-utils \
+        # X11 libraries required by NVIDIA GLX/Vulkan drivers
+        libx11-6 \
+        libxext6 \
+        libxrandr2 \
+        libxrender1 \
+        libxcb1 \
+        libxau6 \
+        libxdmcp6 \
+        libxfixes3 \
+        libxxf86vm1 \
         # GTK/CEF dependencies
         libnss3 \
         libatk1.0-0 \
