@@ -237,6 +237,7 @@ impl SingleBenchmarkPass {
                             height: self.output_resolution.height,
                         },
                         bitrate: None,
+                        preset: VulkanH264EncoderPreset::HighQuality,
                         keyframe_interval: KEYFRAME_INTERVAL,
                     })),
                 },

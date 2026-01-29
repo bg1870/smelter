@@ -37,15 +37,29 @@ impl VideoEncoder for VulkanH264Encoder {
         let width = NonZero::new(u32::max(options.resolution.width as u32, 1)).unwrap();
         let height = NonZero::new(u32::max(options.resolution.height as u32, 1)).unwrap();
         let framerate = ctx.output_framerate;
-        let bitrate = options
-            .bitrate
-            .unwrap_or_else(|| bitrate_from_resolution_framerate(options.resolution, framerate));
+        let bitrate = options.bitrate.unwrap_or_else(|| {
+            VulkanH264EncoderRateControl::VariableBitrate(bitrate_from_resolution_framerate(
+                options.resolution,
+                framerate,
+            ))
+        });
 
-        let rate_control = RateControl::VariableBitrate {
-            average_bitrate: bitrate.average_bitrate,
-            max_bitrate: bitrate.max_bitrate,
-            virtual_buffer_size: std::time::Duration::from_secs(2),
+        let rate_control = match bitrate {
+            VulkanH264EncoderRateControl::VariableBitrate(bitrate) => {
+                RateControl::VariableBitrate {
+                    average_bitrate: bitrate.average_bitrate,
+                    max_bitrate: bitrate.max_bitrate,
+                    virtual_buffer_size: std::time::Duration::from_secs(2),
+                }
+            }
+            VulkanH264EncoderRateControl::ConstantBitrate(bitrate) => {
+                RateControl::ConstantBitrate {
+                    bitrate,
+                    virtual_buffer_size: std::time::Duration::from_secs(2),
+                }
+            }
         };
+
         let device = vulkan_ctx.device.clone();
 
         let video_params = VideoParameters {
@@ -57,8 +71,14 @@ impl VideoEncoder for VulkanH264Encoder {
             },
         };
 
-        let mut encoder_params =
-            device.encoder_parameters_high_quality(video_params, rate_control)?;
+        let mut encoder_params = match options.preset {
+            VulkanH264EncoderPreset::HighQuality => {
+                device.encoder_parameters_high_quality(video_params, rate_control)?
+            }
+            VulkanH264EncoderPreset::LowLatency => {
+                device.encoder_parameters_low_latency(video_params, rate_control)?
+            }
+        };
 
         let gop_size_raw = gop_size_from_ms_framerate(options.keyframe_interval, framerate) as u32;
         let gop_size = NonZero::new(gop_size_raw).unwrap_or(NonZero::new(1).unwrap());
@@ -74,18 +94,20 @@ impl VideoEncoder for VulkanH264Encoder {
             },
             VideoEncoderConfig {
                 resolution: options.resolution,
-                output_format: OutputFrameFormat::RgbaWgpuTexture,
+                output_format: OutputFrameFormat::Nv12WgpuTexture,
                 extradata: None,
             },
         ))
     }
 
     fn encode(&mut self, frame: Frame, force_keyframe: bool) -> Vec<EncodedOutputChunk> {
-        let FrameData::Rgba8UnormWgpuTexture(texture) = frame.data else {
+        let FrameData::Nv12WgpuTexture(texture) = frame.data else {
             error!("Unsupported pixel format {:?}. Dropping frame.", frame.data);
             return Vec::new();
         };
 
+        // TODO: It would be better if we'd "transition texture" as part of the previous submit call (rgba to nv12 conversion, etc.)
+        // to reduce number of submits
         transition_texture(&self.ctx, &texture);
         let result = unsafe {
             self.encoder.encode(
@@ -128,7 +150,7 @@ fn transition_texture(ctx: &GraphicsContext, texture: &wgpu::Texture) {
         [].into_iter(),
         [wgpu::TextureTransition {
             texture,
-            state: wgpu::TextureUses::RESOURCE,
+            state: wgpu::TextureUses::COPY_SRC,
             selector: None,
         }]
         .into_iter(),

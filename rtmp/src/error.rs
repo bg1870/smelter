@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use flv::ParseError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -25,8 +26,8 @@ pub enum RtmpError {
     #[error("Stream not registered")]
     StreamNotRegistered,
 
-    #[error("Socket closed")]
-    SocketClosed,
+    #[error("Channel closed")]
+    ChannelClosed,
 
     #[error("Missing previous chunk header for CSID {0}")]
     MissingHeader(u32),
@@ -39,4 +40,7 @@ pub enum RtmpError {
 
     #[error("Internal buffer error: {0}")]
     InternalBufferError(&'static str),
+
+    #[error("FLV tag parsing failed: {0}")]
+    FlvParsingFailed(#[from] ParseError),
 }

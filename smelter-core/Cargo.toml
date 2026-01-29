@@ -23,6 +23,7 @@ webrtc-util = { workspace = true }
 socket2 = { workspace = true }
 opus = { workspace = true }
 rand = { workspace = true }
+rtmp = { workspace = true }
 mp4 = { git = "https://github.com/smelter-labs/mp4-rust.git", branch = "preserve-asc" }
 reqwest = { workspace = true }
 tracing = { workspace = true }
@@ -43,6 +44,7 @@ itertools = { workspace = true }
 uuid = "1.17.0"
 pollster = { workspace = true }
 audioadapter-buffers = "2.0.0"
+audioadapter = "2.0.0"
 
 [target.x86_64-unknown-linux-gnu.dependencies]
 decklink = { path = "../decklink", optional = true }
