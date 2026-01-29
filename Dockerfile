@@ -147,7 +147,8 @@ ENV NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video
 ENV NVIDIA_REQUIRE_CUDA="cuda>=12.0"
 
 # Vulkan configuration for NVIDIA
-ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+# Let Vulkan auto-discover drivers (NVIDIA Container Toolkit exposes them at runtime)
+# VK_ICD_FILENAMES is not set here to allow auto-discovery
 ENV VK_LAYER_PATH=/usr/share/vulkan/explicit_layer.d
 
 # =============================================================================
