@@ -74,12 +74,8 @@ services:
       - smelter-server1-downloads:/home/smelter/smelter/downloads
       - smelter-server1-cache:/home/smelter/smelter/.cache
       - smelter-server1-logs:/home/smelter/smelter/logs
-      # Mount NVIDIA Vulkan ICD files from host (both possible locations)
+      # Mount NVIDIA Vulkan ICD files from host
       - /usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro
-      - /etc/vulkan/icd.d:/etc/vulkan/icd.d:ro
-      # Mount NVIDIA EGL/GLX vendor files for proper driver detection
-      - /usr/share/glvnd/egl_vendor.d:/usr/share/glvnd/egl_vendor.d:ro
-      - /usr/share/egl/egl_external_platform.d:/usr/share/egl/egl_external_platform.d:ro
 
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/status"]
