@@ -83,7 +83,6 @@ WORKDIR /build
 # =============================================================================
 # Copy only Cargo files first to cache dependencies
 COPY Cargo.toml Cargo.lock ./
-COPY smelter/Cargo.toml smelter/
 COPY smelter-api/Cargo.toml smelter-api/
 COPY smelter-core/Cargo.toml smelter-core/
 COPY smelter-render/Cargo.toml smelter-render/
@@ -92,14 +91,15 @@ COPY vk-video/Cargo.toml vk-video/
 COPY rtmp/Cargo.toml rtmp/
 COPY decklink/Cargo.toml decklink/
 COPY integration-tests/Cargo.toml integration-tests/
-COPY generate/Cargo.toml generate/
+COPY tools/Cargo.toml tools/
 COPY libcef/Cargo.toml libcef/
 
 # Create dummy src files for dependency compilation
-RUN mkdir -p smelter/src smelter-api/src smelter-core/src smelter-render/src \
+RUN mkdir -p src/bin smelter-api/src smelter-core/src smelter-render/src \
              smelter-render-wasm/src vk-video/src rtmp/src decklink/src \
-             integration-tests/src generate/src libcef/src \
-    && echo "fn main() {}" > smelter/src/main.rs \
+             integration-tests/src tools/src libcef/src \
+    && echo "fn main() {}" > src/bin/main_process.rs \
+    && echo "fn main() {}" > src/bin/process_helper.rs \
     && echo "pub fn dummy() {}" > smelter-api/src/lib.rs \
     && echo "pub fn dummy() {}" > smelter-core/src/lib.rs \
     && echo "pub fn dummy() {}" > smelter-render/src/lib.rs \
@@ -107,7 +107,7 @@ RUN mkdir -p smelter/src smelter-api/src smelter-core/src smelter-render/src \
     && echo "pub fn dummy() {}" > vk-video/src/lib.rs \
     && echo "pub fn dummy() {}" > rtmp/src/lib.rs \
     && echo "pub fn dummy() {}" > decklink/src/lib.rs \
-    && echo "pub fn dummy() {}" > generate/src/lib.rs \
+    && echo "pub fn dummy() {}" > tools/src/lib.rs \
     && echo "pub fn dummy() {}" > libcef/src/lib.rs \
     && echo "fn main() {}" > integration-tests/src/main.rs
 
