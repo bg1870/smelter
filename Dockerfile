@@ -150,6 +150,8 @@ ENV NVIDIA_REQUIRE_CUDA="cuda>=12.0"
 # Let Vulkan auto-discover drivers (NVIDIA Container Toolkit exposes them at runtime)
 # VK_ICD_FILENAMES is not set here to allow auto-discovery
 ENV VK_LAYER_PATH=/usr/share/vulkan/explicit_layer.d
+# Include NVIDIA library paths injected by the container toolkit
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/lib64:${LD_LIBRARY_PATH}
 
 # =============================================================================
 # Runtime Dependencies
@@ -240,7 +242,8 @@ RUN chmod +x /home/${USERNAME}/smelter/main_process \
 # Binary paths
 ENV SMELTER_MAIN_EXECUTABLE_PATH=/home/${USERNAME}/smelter/main_process
 ENV SMELTER_PROCESS_HELPER_PATH=/home/${USERNAME}/smelter/process_helper
-ENV LD_LIBRARY_PATH=/home/${USERNAME}/smelter/lib
+# Include app libs + NVIDIA libs injected by container toolkit
+ENV LD_LIBRARY_PATH=/home/${USERNAME}/smelter/lib:/usr/lib/x86_64-linux-gnu:/usr/lib64
 
 # XDG runtime for DBus
 ENV XDG_RUNTIME_DIR=/home/${USERNAME}/smelter/xdg_runtime
@@ -301,20 +304,48 @@ verify_gpu() {
         log "WARNING: nvidia-smi not available"
     fi
 
-    # Setup Vulkan ICD for NVIDIA
-    if [ -f "/usr/share/vulkan/icd.d/nvidia_icd.json" ]; then
-        export VK_ICD_FILENAMES="/usr/share/vulkan/icd.d/nvidia_icd.json"
-        log "Found NVIDIA Vulkan ICD at /usr/share/vulkan/icd.d/nvidia_icd.json"
+    # Setup Vulkan ICD for NVIDIA - check multiple possible locations
+    local icd_locations=(
+        "/usr/share/vulkan/icd.d/nvidia_icd.json"
+        "/etc/vulkan/icd.d/nvidia_icd.json"
+        "/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json"
+        "/etc/vulkan/icd.d/nvidia_icd.x86_64.json"
+    )
+
+    local found_icd=""
+    for icd_path in "${icd_locations[@]}"; do
+        if [ -f "${icd_path}" ]; then
+            found_icd="${icd_path}"
+            break
+        fi
+    done
+
+    if [ -n "${found_icd}" ]; then
+        export VK_ICD_FILENAMES="${found_icd}"
+        log "Found NVIDIA Vulkan ICD at ${found_icd}"
+        # Show ICD contents for debugging
+        log "ICD contents:"
+        cat "${found_icd}" 2>/dev/null || true
     else
-        log "WARNING: NVIDIA Vulkan ICD not found at /usr/share/vulkan/icd.d/nvidia_icd.json"
+        log "WARNING: NVIDIA Vulkan ICD not found in standard locations"
+        log "Searching for any nvidia ICD files..."
+        find /usr/share/vulkan /etc/vulkan -name "*nvidia*.json" 2>/dev/null || true
+        # Don't set VK_ICD_FILENAMES, let Vulkan auto-discover
         unset VK_ICD_FILENAMES
     fi
+
+    # Verify NVIDIA libraries are available
+    log "Checking for NVIDIA Vulkan libraries..."
+    ldconfig -p 2>/dev/null | grep -i "nvidia" | head -5 || true
+
+    # List LD_LIBRARY_PATH for debugging
+    log "LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-not set}"
 
     # Check Vulkan devices
     if command -v vulkaninfo &>/dev/null; then
         log "Checking Vulkan devices..."
-        vulkaninfo --summary 2>/dev/null | grep -E "(GPU|deviceName|deviceType)" || {
-            log "WARNING: vulkaninfo found no GPU devices"
+        vulkaninfo --summary 2>&1 | head -30 || {
+            log "WARNING: vulkaninfo failed or found no GPU devices"
         }
     fi
 }
@@ -398,6 +429,9 @@ main() {
     log "  WHIP/WHEP Port: ${SMELTER_WHIP_WHEP_SERVER_PORT}"
     log "  Web Renderer: ${SMELTER_WEB_RENDERER_ENABLE}"
     log "  GPU Driver: ${SMELTER_GPU_DEVICE_DRIVER:-auto}"
+
+    # Refresh library cache to pick up NVIDIA libs injected by container toolkit
+    sudo ldconfig 2>/dev/null || true
 
     verify_gpu
     setup_dbus
