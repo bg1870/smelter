@@ -15,18 +15,33 @@
 
 services:
   smelter-server1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        RUST_VERSION: stable
     image: smelter:latest
     container_name: smelter-server1
     restart: unless-stopped
 
-    # GPU (works with docker compose)
-    gpus: all
+    # GPU Configuration
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities:
+                - gpu
+                - compute
+                - utility
+                - video
 
     # Internal ports only (no host bindings)
     expose:
-      - "8081"  # HTTP API
-      - "9000"  # WHIP/WHEP
-      - "1935"  # RTMP ingest (nginx-rtmp pushes here)
+      - "8081" # HTTP API
+      - "9000" # WHIP/WHEP
+      - "1935" # RTMP ingest (nginx-rtmp pushes here)
 
     environment:
       - SMELTER_API_PORT=8081
@@ -59,7 +74,7 @@ services:
       - smelter-server1-logs:/home/smelter/smelter/logs
 
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/status >/dev/null 2>&1 || exit 1"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/status"]
       interval: 30s
       timeout: 10s
       retries: 3
