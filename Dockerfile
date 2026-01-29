@@ -301,9 +301,21 @@ verify_gpu() {
         log "WARNING: nvidia-smi not available"
     fi
 
-    # Check Vulkan
+    # Setup Vulkan ICD for NVIDIA
+    if [ -f "/usr/share/vulkan/icd.d/nvidia_icd.json" ]; then
+        export VK_ICD_FILENAMES="/usr/share/vulkan/icd.d/nvidia_icd.json"
+        log "Found NVIDIA Vulkan ICD at /usr/share/vulkan/icd.d/nvidia_icd.json"
+    else
+        log "WARNING: NVIDIA Vulkan ICD not found at /usr/share/vulkan/icd.d/nvidia_icd.json"
+        unset VK_ICD_FILENAMES
+    fi
+
+    # Check Vulkan devices
     if command -v vulkaninfo &>/dev/null; then
-        vulkaninfo --summary 2>/dev/null | grep -E "(GPU|deviceName)" || true
+        log "Checking Vulkan devices..."
+        vulkaninfo --summary 2>/dev/null | grep -E "(GPU|deviceName|deviceType)" || {
+            log "WARNING: vulkaninfo found no GPU devices"
+        }
     fi
 }
 

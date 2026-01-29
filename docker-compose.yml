@@ -72,6 +72,8 @@ services:
       - smelter-server1-downloads:/home/smelter/smelter/downloads
       - smelter-server1-cache:/home/smelter/smelter/.cache
       - smelter-server1-logs:/home/smelter/smelter/logs
+      # Mount NVIDIA Vulkan ICD files from host
+      - /usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro
 
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/status"]
