@@ -147,11 +147,11 @@ ENV NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video
 ENV NVIDIA_REQUIRE_CUDA="cuda>=12.0"
 
 # Vulkan configuration for NVIDIA
-# Let Vulkan auto-discover drivers (NVIDIA Container Toolkit exposes them at runtime)
-# VK_ICD_FILENAMES is not set here to allow auto-discovery
 ENV VK_LAYER_PATH=/usr/share/vulkan/explicit_layer.d
 # Include NVIDIA library paths injected by the container toolkit
 ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/lib64:${LD_LIBRARY_PATH}
+# Point to our custom ICD file that uses libnvidia-vulkan-producer.so
+ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
 
 # =============================================================================
 # Runtime Dependencies
@@ -204,6 +204,12 @@ RUN apt-get update -y -qq \
         fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
     && fc-cache -fv
+
+# Create NVIDIA Vulkan ICD file pointing to the vulkan-producer library
+# (The container toolkit injects this lib but the default ICD points to libGLX_nvidia which doesn't work)
+RUN mkdir -p /usr/share/vulkan/icd.d && \
+    echo '{"file_format_version":"1.0.0","ICD":{"library_path":"/usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so","api_version":"1.3.242"}}' \
+    > /usr/share/vulkan/icd.d/nvidia_icd.json
 
 # =============================================================================
 # User Setup (security best practice)
@@ -319,28 +325,15 @@ verify_gpu() {
         log "WARNING: nvidia-smi not available"
     fi
 
-    # Create custom Vulkan ICD pointing to libnvidia-vulkan-producer.so
-    # (The NVIDIA container toolkit doesn't inject this library, so we mount it)
-    log "Setting up Vulkan ICD for NVIDIA..."
-    sudo mkdir -p /etc/vulkan/icd.d
-    sudo tee /etc/vulkan/icd.d/nvidia_icd.json > /dev/null << 'ICDEOF'
-{
-    "file_format_version" : "1.0.0",
-    "ICD": {
-        "library_path": "/usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so",
-        "api_version" : "1.3.242"
-    }
-}
-ICDEOF
-    export VK_ICD_FILENAMES="/etc/vulkan/icd.d/nvidia_icd.json"
-    log "Created Vulkan ICD at /etc/vulkan/icd.d/nvidia_icd.json"
-
-    # Verify the vulkan producer library is available
+    # Verify the vulkan producer library is available (injected by container toolkit)
     if [ -f "/usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so" ]; then
         log "Found libnvidia-vulkan-producer.so"
     else
         log "WARNING: libnvidia-vulkan-producer.so not found - Vulkan may not work"
     fi
+
+    # ICD file is created at build time, just verify it exists
+    log "VK_ICD_FILENAMES=${VK_ICD_FILENAMES:-not set}"
 
     # Check Vulkan devices
     if command -v vulkaninfo &>/dev/null; then
