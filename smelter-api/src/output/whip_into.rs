@@ -121,6 +121,7 @@ impl WhipVideoEncoderOptions {
                     .collect(),
                 // Do NOT enable global_header for WebRTC (WHIP) - it causes issues
                 codec_flags: None,
+                bitstream_format: core::H264BitstreamFormat::AnnexB,
             }),
             WhipVideoEncoderOptions::VulkanH264 {
                 bitrate,

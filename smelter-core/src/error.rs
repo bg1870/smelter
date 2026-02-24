@@ -121,6 +121,9 @@ pub enum OutputInitError {
 
     #[error("WHIP WHEP server is not running, cannot start WHEP output")]
     WhipWhepServerNotRunning,
+
+    #[error(transparent)]
+    RtmpError(#[from] RtmpClientError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -163,6 +166,9 @@ pub enum InputInitError {
 
     #[error(transparent)]
     Whep(#[from] Box<WebrtcClientError>),
+
+    #[error(transparent)]
+    Rtmp(#[from] RtmpServerError),
 
     #[cfg(feature = "decklink")]
     #[error(transparent)]

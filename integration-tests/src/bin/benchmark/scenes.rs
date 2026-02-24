@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use smelter_render::{
     InputId, OutputId, RendererId, RendererSpec,
     image::{ImageSource, ImageSpec, ImageType},
@@ -22,10 +20,10 @@ pub type SceneBuilderFn = fn(ctx: &SceneContext, output_id: &OutputId) -> Compon
 
 pub fn example_image() -> (RendererId, RendererSpec) {
     (
-        RendererId(Arc::from("example_image")),
+        RendererId("example_image".into()),
         RendererSpec::Image(ImageSpec {
             src: ImageSource::LocalPath {
-                path: example_image_path().to_string_lossy().to_string(),
+                path: example_image_path().into(),
             },
             image_type: ImageType::Png,
         }),
@@ -34,7 +32,7 @@ pub fn example_image() -> (RendererId, RendererSpec) {
 
 pub fn example_shader() -> (RendererId, RendererSpec) {
     (
-        RendererId(Arc::from("example_shader")),
+        RendererId("example_shader".into()),
         RendererSpec::Shader(ShaderSpec {
             source: include_str!("./silly.wgsl").into(),
         }),
@@ -67,7 +65,7 @@ pub fn blank(_ctx: &SceneContext, _output_id: &OutputId) -> Component {
 }
 
 pub fn static_image(_ctx: &SceneContext, _output_id: &OutputId) -> Component {
-    let renderer_id = RendererId(Arc::from("example_image"));
+    let renderer_id = RendererId("example_image".into());
     Component::Rescaler(RescalerComponent {
         child: Component::Image(ImageComponent {
             id: None,

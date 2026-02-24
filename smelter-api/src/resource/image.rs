@@ -1,32 +1,45 @@
+use std::{path::Path, sync::Arc};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use smelter_render::image;
+use utoipa::ToSchema;
 
 use crate::*;
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(tag = "asset_type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ImageSpec {
     Png {
-        url: Option<String>,
-        path: Option<String>,
+        url: Option<Arc<str>>,
+
+        #[schema(value_type = Option<str>)]
+        path: Option<Arc<Path>>,
     },
     Jpeg {
-        url: Option<String>,
-        path: Option<String>,
+        url: Option<Arc<str>>,
+
+        #[schema(value_type = Option<str>)]
+        path: Option<Arc<Path>>,
     },
     Svg {
-        url: Option<String>,
-        path: Option<String>,
+        url: Option<Arc<str>>,
+
+        #[schema(value_type = Option<str>)]
+        path: Option<Arc<Path>>,
         resolution: Option<Resolution>,
     },
     Gif {
-        url: Option<String>,
-        path: Option<String>,
+        url: Option<Arc<str>>,
+
+        #[schema(value_type = Option<str>)]
+        path: Option<Arc<Path>>,
     },
     Auto {
-        url: Option<String>,
-        path: Option<String>,
+        url: Option<Arc<str>>,
+
+        #[schema(value_type = Option<str>)]
+        path: Option<Arc<Path>>,
     },
 }
 
@@ -35,8 +48,8 @@ impl TryFrom<ImageSpec> for smelter_render::RendererSpec {
 
     fn try_from(spec: ImageSpec) -> Result<Self, Self::Error> {
         fn from_url_or_path(
-            url: Option<String>,
-            path: Option<String>,
+            url: Option<Arc<str>>,
+            path: Option<Arc<Path>>,
         ) -> Result<image::ImageSource, TypeError> {
             match (url, path) {
                 (None, None) => Err(TypeError::new(

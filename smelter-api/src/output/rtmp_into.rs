@@ -59,7 +59,8 @@ impl TryFrom<RtmpOutput> for core::RegisterOutputOptions {
         };
 
         let output_options = core::ProtocolOutputOptions::Rtmp(core::RtmpOutputOptions {
-            url,
+            connection: core::RtmpConnectionOptions::from_url(&url)
+                .map_err(|err| TypeError::new(format!("Invalid url: {err}")))?,
             video: video_encoder_options,
             audio: audio_encoder_options,
         });
@@ -99,6 +100,7 @@ impl RtmpClientVideoEncoderOptions {
                 codec_flags: Some(core::FfmpegH264CodecFlags {
                     global_header: true,
                 }),
+                bitstream_format: core::H264BitstreamFormat::Avcc,
             }),
             RtmpClientVideoEncoderOptions::VulkanH264 {
                 bitrate,

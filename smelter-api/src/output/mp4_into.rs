@@ -60,7 +60,7 @@ impl TryFrom<Mp4Output> for core::RegisterOutputOptions {
         };
 
         let output_options = core::ProtocolOutputOptions::Mp4(core::Mp4OutputOptions {
-            output_path: path.into(),
+            output_path: path,
             video: video_encoder_options,
             audio: audio_encoder_options,
             raw_options: ffmpeg_options.unwrap_or_default().into_iter().collect(),
@@ -99,6 +99,7 @@ impl Mp4VideoEncoderOptions {
                     .collect(),
                 // MP4 file output doesn't require global_header
                 codec_flags: None,
+                bitstream_format: core::H264BitstreamFormat::AnnexB,
             }),
             Mp4VideoEncoderOptions::VulkanH264 {
                 bitrate,

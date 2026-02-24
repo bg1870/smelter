@@ -1,15 +1,17 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::*;
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Mp4Output {
     /// Path to output MP4 file.
-    pub path: String,
+    #[schema(value_type = str)]
+    pub path: Arc<Path>,
     /// Video stream configuration.
     pub video: Option<OutputMp4VideoOptions>,
     /// Audio stream configuration.
@@ -18,7 +20,7 @@ pub struct Mp4Output {
     pub ffmpeg_options: Option<HashMap<Arc<str>, Arc<str>>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OutputMp4VideoOptions {
     /// Output resolution in pixels.
@@ -31,7 +33,7 @@ pub struct OutputMp4VideoOptions {
     pub initial: VideoScene,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Mp4VideoEncoderOptions {
     #[serde(rename = "ffmpeg_h264")]
@@ -62,7 +64,7 @@ pub enum Mp4VideoEncoderOptions {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OutputMp4AudioOptions {
     /// (**default="sum_clip"**) Specifies how audio should be mixed.
@@ -77,7 +79,7 @@ pub struct OutputMp4AudioOptions {
     pub initial: AudioScene,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Mp4AudioEncoderOptions {
     Aac {

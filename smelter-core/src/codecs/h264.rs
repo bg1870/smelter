@@ -28,6 +28,12 @@ pub struct FfmpegH264CodecFlags {
     pub global_header: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum H264BitstreamFormat {
+    AnnexB,
+    Avcc,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FfmpegH264EncoderOptions {
     pub preset: FfmpegH264EncoderPreset,
@@ -38,6 +44,7 @@ pub struct FfmpegH264EncoderOptions {
     pub raw_options: Vec<(Arc<str>, Arc<str>)>,
     /// Optional codec-level flags. If None, no special codec flags are set.
     pub codec_flags: Option<FfmpegH264CodecFlags>,
+    pub bitstream_format: H264BitstreamFormat,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

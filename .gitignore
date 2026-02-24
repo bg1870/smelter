@@ -41,3 +41,5 @@ logs/
 
 demo_json.json
 *.pid
+
+.claude/settings.local.json

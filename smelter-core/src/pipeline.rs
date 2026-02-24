@@ -1,10 +1,9 @@
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
-use ::rtmp::RtmpServer;
 use smelter_render::{Framerate, RenderingMode, WgpuFeatures, web_renderer::ChromiumContext};
 use tokio::runtime::Runtime;
 
@@ -38,8 +37,8 @@ mod webrtc;
 mod input;
 mod instance;
 mod output;
-mod resampler;
-mod utils;
+
+pub(crate) mod utils;
 
 pub use instance::Pipeline;
 
@@ -69,7 +68,9 @@ pub struct PipelineOptions {
     pub chromium_context: Option<Arc<ChromiumContext>>,
 
     pub whip_whep_server: PipelineWhipWhepServerOptions,
-    pub whip_whep_stun_servers: Arc<Vec<String>>,
+    pub webrtc_stun_servers: Arc<Vec<String>>,
+    pub webrtc_port_range: Option<(u16, u16)>,
+    pub webrtc_nat_1to1_ips: Arc<Vec<String>>,
 
     pub rtmp_server: PipelineRtmpServerOptions,
 }
@@ -107,15 +108,16 @@ pub(crate) struct PipelineCtx {
     pub mixing_sample_rate: u32,
     pub output_framerate: Framerate,
 
-    pub stun_servers: Arc<Vec<String>>,
     pub download_dir: Arc<Path>,
     pub graphics_context: GraphicsContext,
     pub event_emitter: Arc<EventEmitter>,
     pub stats_sender: StatsSender,
+    pub webrtc_stun_servers: Arc<Vec<String>>,
+    pub webrtc_port_range: Option<(u16, u16)>,
+    pub webrtc_nat_1to1_ips: Arc<Vec<String>>,
     tokio_rt: Arc<Runtime>,
     whip_whep_state: Option<Arc<WhipWhepPipelineState>>,
-    _rtmp_state: Option<Arc<RtmpPipelineState>>,
-    _rtmp_server: Option<Arc<Mutex<RtmpServer>>>,
+    rtmp_state: Option<Arc<RtmpPipelineState>>,
 }
 
 impl std::fmt::Debug for PipelineCtx {

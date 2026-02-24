@@ -1,80 +1,81 @@
-use std::sync::Arc;
-
 use thiserror::Error;
+
+use crate::{
+    AudioCodec, VideoCodec, VideoTagFrameType,
+    amf3::{I29_MAX, I29_MIN, MAX_SEALED_COUNT, U28_MAX, U29_MAX},
+    protocol::MessageType,
+};
 
 #[derive(Error, Debug)]
 pub enum RtmpError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Invalid RTMP version: {0}")]
-    InvalidVersion(u8),
-
     #[error("Handshake failed: {0}")]
-    HandshakeFailed(Arc<str>),
+    HandshakeFailed(String),
 
     #[error("Message too large: {0} bytes")]
     MessageTooLarge(u32),
 
-    #[error("Unsupported RTMP message type: {0}")]
-    UnsuportedMessageType(u8),
-
-    #[error("Connection timeout")]
-    Timeout,
-
-    #[error("Stream not registered")]
-    StreamNotRegistered,
-
     #[error("Channel closed")]
     ChannelClosed,
-
-    #[error("Missing previous chunk header for CSID {0}")]
-    MissingHeader(u32),
 
     #[error("Unexpected EOF")]
     UnexpectedEof,
 
-    #[error("Would Block")]
-    WouldBlock,
+    #[error("Internal error: {0}")]
+    InternalError(&'static str),
 
-    #[error("Internal buffer error: {0}")]
-    InternalBufferError(&'static str),
+    #[error("Parsing error: {0}")]
+    ParsingError(#[from] ParseError),
 
-    #[error("FLV tag parsing failed: {0}")]
-    FlvParsingFailed(#[from] ParseError),
+    #[error("Serialization error: {0}")]
+    SerializeError(#[from] SerializationError),
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum ParseError {
-    #[error("Not enough data in FLV payload.")]
+    #[error("Not enough data.")]
     NotEnoughData,
 
-    #[error("Data is not a valid FLV header or tag header")]
-    InvalidHeader,
+    #[error("Unknown RTMP message type: {0}")]
+    UnknownMessageType(u8),
 
-    #[error("Unsupported codec header value: {0}")]
-    UnsupportedCodec(u8),
-
-    #[error("Filtered FLV packets are not supported.")]
-    UnsupportedFiltered,
-
-    #[error("Unsupported tag type: {0}")]
-    UnsupportedTagType(u8),
+    #[error("Unsupported RTMP message type: {0:?}")]
+    UnsupportedMessageType(MessageType),
 
     #[error("Error parsing audio tag: {0}")]
-    Audio(AudioTagParseError),
+    Audio(#[from] AudioTagParseError),
+
+    #[error("Error parsing audio specific config: {0}")]
+    AudioConfig(#[from] AudioSpecificConfigParseError),
 
     #[error("Error parsing video tag: {0}")]
-    Video(VideoTagParseError),
+    Video(#[from] VideoTagParseError),
 
-    #[error("Error decoding amf0: {0}")]
-    Amf0(AmfDecodingError),
+    #[error("Error decoding amf: {0}")]
+    AmfDecoding(#[from] AmfDecodingError),
 
-    #[error("AVC decoder config received more than once in one stream.")]
-    AvcConfigDuplication,
+    #[error("Malformed packet: {0}")]
+    MalformedPacket(&'static str),
+}
 
-    #[error("AAC decoder config received more than once in one stream.")]
-    AacConfigDuplication,
+#[derive(Error, Debug, Clone, PartialEq)]
+pub enum SerializationError {
+    #[error("Error encoding amf0: {0}")]
+    Amf0Encoding(#[from] AmfEncodingError),
+
+    #[error("Unsupported video codec: {0:?}")]
+    UnsupportedVideoCodec(VideoCodec),
+
+    #[error("Unsupported audio codec: {0:?}")]
+    UnsupportedAudioCodec(AudioCodec),
+
+    #[error("Packet type is required for AAC")]
+    AacPacketTypeRequired,
+
+    #[error("Packet type is required for H264")]
+    H264PacketTypeRequired,
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
@@ -82,8 +83,14 @@ pub enum VideoTagParseError {
     #[error("Invalid AvcPacketType header value: {0}")]
     InvalidAvcPacketType(u8),
 
-    #[error("Unsupported frame type header value: {0}")]
-    UnsupportedFrameType(u8),
+    #[error("Unknown codec header value: {0}")]
+    UnknownCodecId(u8),
+
+    #[error("Unknown frame type header value: {0}")]
+    UnknownFrameType(u8),
+
+    #[error("Invalid frame type for H264 packet: {0:?}")]
+    InvalidFrameTypeForH264(VideoTagFrameType),
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
@@ -96,12 +103,27 @@ pub enum AudioTagParseError {
 
     #[error("Invalid AacPacketType header value: {0}")]
     InvalidAacPacketType(u8),
+
+    #[error("Unknown codec header value: {0}")]
+    UnknownCodecId(u8),
+}
+
+#[derive(Error, Debug, Clone, PartialEq)]
+pub enum AudioSpecificConfigParseError {
+    #[error("Invalid frequency index: {0}")]
+    InvalidFrequencyIndex(u8),
+
+    #[error("Invalid audio channel value in AAC audio specific config: {0}")]
+    InvalidAudioChannel(u8),
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum AmfDecodingError {
     #[error("Unknown data type: {0}")]
     UnknownType(u8),
+
+    #[error("Format selector must always be 0.")]
+    InvalidFormatSelector,
 
     #[error("Insufficient data")]
     InsufficientData,
@@ -119,11 +141,49 @@ pub enum AmfDecodingError {
     ExternalizableTrait,
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, PartialEq)]
 pub enum AmfEncodingError {
-    #[error("String too long: {0} bytes (max {})", u16::MAX)]
+    #[error("String too long: {0} bytes (max {}).", u16::MAX)]
     StringTooLong(usize),
 
-    #[error("Array too long: {0} elements (max {})", u32::MAX)]
+    #[error("Array too long: {0} elements (max {}).", u32::MAX)]
     ArrayTooLong(usize),
+
+    #[error("Long string too long: {0} bytes (max {}).", u32::MAX)]
+    LongStringTooLong(usize),
+
+    #[error("AMF3 encoding error: {0}.")]
+    Amf3(#[from] Amf3EncodingError),
+}
+
+#[derive(Error, Debug, Clone, PartialEq)]
+pub enum Amf3EncodingError {
+    #[error("String too long: {0} bytes (max {U28_MAX}).")]
+    StringTooLong(usize),
+
+    #[error("Array too long: {0} elements (max {U28_MAX}).")]
+    ArrayTooLong(usize),
+
+    #[error("Vector too long: {0} elements (max {U28_MAX}).")]
+    VectorTooLong(usize),
+
+    #[error(
+        "Sealed count larger than actual number of object members. (Sealed count: {sealed_count}, Actual members: {actual_members})."
+    )]
+    SealedCountTooLarge {
+        sealed_count: usize,
+        actual_members: usize,
+    },
+
+    #[error("Too many sealed members in an object: {0} elements (max {MAX_SEALED_COUNT}).")]
+    SealedMembersCountTooLarge(usize),
+
+    #[error("Dictionary too long: {0} entries (max {U28_MAX}).")]
+    DictionaryTooLong(usize),
+
+    #[error("Integer must be in range [{I29_MIN}, {I29_MAX}].")]
+    OutOfRangeInteger,
+
+    #[error("U29 must be in range [0, {U29_MAX}].")]
+    OutOfRangeU29,
 }

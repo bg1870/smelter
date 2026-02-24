@@ -7,6 +7,7 @@ use std::{
 
 use crossbeam_channel::{Receiver, bounded};
 use glyphon::fontdb;
+use rtmp::RtmpServer;
 use tokio::runtime::Runtime;
 use tracing::{Level, error, info, span, trace, warn};
 
@@ -54,6 +55,10 @@ pub struct Pipeline {
     #[allow(dead_code)]
     // triggers cleanup on drop
     whip_whep_handle: Option<WhipWhepServerHandle>,
+
+    #[allow(dead_code)]
+    // triggers cleanup on drop
+    rtmp_server: Option<Arc<Mutex<RtmpServer>>>,
 }
 
 impl Pipeline {
@@ -501,7 +506,7 @@ fn run_audio_mixer_thread(
                 .collect();
 
         trace!("Mix audio");
-        let mixed_samples = audio_mixer.mix_samples(samples.into());
+        let mixed_samples = audio_mixer.process_batch_set(samples.into());
 
         for (output_id, batch) in mixed_samples.0 {
             trace!(?output_id, ?batch, "Send batch");
@@ -565,11 +570,6 @@ fn create_pipeline(opts: PipelineOptions) -> Result<Pipeline, InitPipelineError>
         PipelineRtmpServerOptions::Disable => None,
     };
 
-    let rtmp_server = match rtmp_state.as_ref() {
-        Some(state) => Some(spawn_rtmp_server(state)?),
-        None => None,
-    };
-
     let ctx = Arc::new(PipelineCtx {
         queue_sync_point: Instant::now(),
         default_buffer_duration: opts.default_buffer_duration,
@@ -577,7 +577,6 @@ fn create_pipeline(opts: PipelineOptions) -> Result<Pipeline, InitPipelineError>
         mixing_sample_rate: opts.mixing_sample_rate,
         output_framerate: opts.output_framerate,
 
-        stun_servers: opts.whip_whep_stun_servers.clone(),
         download_dir,
         event_emitter: Arc::new(EventEmitter::new()),
         stats_sender,
@@ -589,12 +588,19 @@ fn create_pipeline(opts: PipelineOptions) -> Result<Pipeline, InitPipelineError>
             }
             PipelineWhipWhepServerOptions::Disable => None,
         },
-        _rtmp_state: rtmp_state,
-        _rtmp_server: rtmp_server,
+        webrtc_stun_servers: opts.webrtc_stun_servers.clone(),
+        webrtc_port_range: opts.webrtc_port_range,
+        webrtc_nat_1to1_ips: opts.webrtc_nat_1to1_ips,
+        rtmp_state: rtmp_state.clone(),
     });
 
     let whip_whep_handle = match &ctx.whip_whep_state {
         Some(state) => Some(WhipWhepServer::spawn(ctx.clone(), state)?),
+        None => None,
+    };
+
+    let rtmp_server = match rtmp_state.as_ref() {
+        Some(state) => Some(spawn_rtmp_server(ctx.clone(), state)?),
         None => None,
     };
 
@@ -609,6 +615,7 @@ fn create_pipeline(opts: PipelineOptions) -> Result<Pipeline, InitPipelineError>
         start_timestamp_ms: None,
         ctx,
         whip_whep_handle,
+        rtmp_server,
     };
 
     Ok(pipeline)

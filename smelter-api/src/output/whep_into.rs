@@ -95,6 +95,7 @@ impl WhepVideoEncoderOptions {
                     .collect(),
                 // Do NOT enable global_header for WebRTC (WHEP) - it causes issues
                 codec_flags: None,
+                bitstream_format: core::H264BitstreamFormat::AnnexB,
             }),
             WhepVideoEncoderOptions::VulkanH264 {
                 bitrate,

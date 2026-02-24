@@ -1,15 +1,17 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::*;
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HlsOutput {
     /// Path to output HLS playlist.
-    pub path: String,
+    #[schema(value_type = str)]
+    pub path: Arc<Path>,
     /// Number of segments kept in the playlist. When the limit is reached the oldest segment is removed.
     /// If not specified, no segments will removed.
     pub max_playlist_size: Option<usize>,
@@ -19,7 +21,7 @@ pub struct HlsOutput {
     pub audio: Option<OutputHlsAudioOptions>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OutputHlsVideoOptions {
     /// Output resolution in pixels.
@@ -32,7 +34,7 @@ pub struct OutputHlsVideoOptions {
     pub initial: VideoScene,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum HlsVideoEncoderOptions {
     #[serde(rename = "ffmpeg_h264")]
@@ -63,7 +65,7 @@ pub enum HlsVideoEncoderOptions {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OutputHlsAudioOptions {
     /// (**default="sum_clip"**) Specifies how audio should be mixed.
@@ -78,7 +80,7 @@ pub struct OutputHlsAudioOptions {
     pub initial: AudioScene,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum HlsAudioEncoderOptions {
     Aac {

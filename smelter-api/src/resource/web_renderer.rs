@@ -1,21 +1,24 @@
+use std::sync::Arc;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use smelter_render::web_renderer;
+use utoipa::ToSchema;
 
 use crate::*;
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WebRendererSpec {
     /// Url of a website that you want to render.
-    pub url: String,
+    pub url: Arc<str>,
     /// Resolution.
     pub resolution: Resolution,
     /// Mechanism used to render input frames on the website.
     pub embedding_method: Option<WebEmbeddingMethod>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WebEmbeddingMethod {
     /// Pass raw input frames as JS buffers so they can be rendered, for example, using a `<canvas>` component.

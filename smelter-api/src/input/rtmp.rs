@@ -2,13 +2,19 @@ use std::{collections::HashMap, sync::Arc};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RtmpInput {
-    /// URL where the RTMP server will listen for incoming stream.
-    /// Format: `rtmp://<ip_address>:<port>`
-    pub url: Arc<str>,
+    /// The RTMP application name.
+    /// This is the first path segment of the RTMP stream URL that Smelter listens on for incoming streams.
+    /// Format: `rtmp://<ip_address>:<port>/<app>/<stream_key`
+    pub app: Arc<str>,
+    /// The RTMP stream key.
+    /// This is the second path segment of the RTMP stream URL that Smelter listens on for incoming streams.
+    /// Format: `rtmp://<ip_address>:<port>/<app>/<stream_key`
+    pub stream_key: Arc<str>,
     /// (**default=`false`**) If input is required and the stream is not delivered
     /// on time, then Smelter will delay producing output frames.
     pub required: Option<bool>,
@@ -20,13 +26,13 @@ pub struct RtmpInput {
     pub decoder_map: Option<HashMap<InputRtmpCodec, RtmpVideoDecoderOptions>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum InputRtmpCodec {
     H264,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema, ToSchema)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum RtmpVideoDecoderOptions {
     /// Software H264 decoder based on FFmpeg.

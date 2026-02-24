@@ -82,6 +82,7 @@ pub(super) fn resolve_video_preferences(
                             pixel_format: OutputPixelFormat::YUV420P,
                             raw_options: Vec::new(),
                             codec_flags: None, // WebRTC doesn't need global_header
+                            bitstream_format: H264BitstreamFormat::AnnexB,
                         })
                     },
                 ]

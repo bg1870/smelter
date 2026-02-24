@@ -131,6 +131,7 @@ impl RtpVideoEncoderOptions {
                 codec_flags: Some(core::FfmpegH264CodecFlags {
                     global_header: true,
                 }),
+                bitstream_format: core::H264BitstreamFormat::AnnexB,
             }),
             RtpVideoEncoderOptions::VulkanH264 {
                 bitrate,

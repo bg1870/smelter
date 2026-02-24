@@ -2,27 +2,27 @@ use std::{path::Path, sync::Arc};
 
 use axum::{extract::State, response::IntoResponse};
 use serde::Serialize;
-use serde_json::json;
 use smelter_core::{InputProtocolKind, OutputProtocolKind};
 use smelter_render::RenderingMode;
+use utoipa::ToSchema;
 
 use crate::error::ApiError;
 
 use super::ApiState;
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 struct InputInfo {
     input_id: String,
     input_type: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 struct OutputInfo {
     output_id: String,
     output_type: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 struct InstanceConfiguration {
     api_port: u16,
 
@@ -33,6 +33,7 @@ struct InstanceConfiguration {
     never_drop_output_frames: bool,
     run_late_scheduled_events: bool,
 
+    #[schema(value_type = str)]
     download_root: Arc<Path>,
 
     web_renderer_enable: bool,
@@ -40,12 +41,31 @@ struct InstanceConfiguration {
 
     whip_whep_server_port: u16,
     whip_whep_enable: bool,
-    whip_whep_stun_servers: Arc<Vec<String>>,
+    webrtc_stun_servers: Arc<Vec<String>>,
 
     rendering_mode: &'static str,
 }
 
-pub(super) async fn status_handler(
+#[derive(Serialize, ToSchema)]
+struct InstanceStatus {
+    instance_id: String,
+    configuration: InstanceConfiguration,
+    inputs: Vec<InputInfo>,
+    outputs: Vec<OutputInfo>,
+    start_timestamp_ms: Option<u64>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/status",
+    operation_id = "get_status",
+    responses(
+        (status = 200, description = "Instance status fetched successfully.", body = InstanceStatus),
+        (status = 500, description = "Internal server error.", body = ApiError),
+    ),
+    tags = ["status_request"],
+)]
+pub async fn status_handler(
     State(state): State<Arc<ApiState>>,
 ) -> Result<impl IntoResponse, ApiError> {
     let pipeline = state.pipeline()?;
@@ -102,7 +122,7 @@ pub(super) async fn status_handler(
         never_drop_output_frames: state.config.never_drop_output_frames,
         run_late_scheduled_events: state.config.run_late_scheduled_events,
         download_root: state.config.download_root.clone(),
-        whip_whep_stun_servers: state.config.whip_whep_stun_servers.clone(),
+        webrtc_stun_servers: state.config.webrtc_stun_servers.clone(),
         web_renderer_enable: state.config.web_renderer_enable,
         web_renderer_enable_gpu: state.config.web_renderer_gpu_enable,
         whip_whep_enable: state.config.whip_whep_enable,
@@ -115,13 +135,13 @@ pub(super) async fn status_handler(
 
     let start_timestamp_ms = pipeline.start_timestamp_ms();
 
-    Ok(axum::Json(json!({
-        "instance_id": state.config.instance_id,
-        "configuration": configuration,
-        "inputs": inputs,
-        "outputs": outputs,
-        "start_timestamp_ms": start_timestamp_ms
-    }))
+    Ok(axum::Json(InstanceStatus {
+        instance_id: state.config.instance_id.clone(),
+        configuration,
+        inputs,
+        outputs,
+        start_timestamp_ms,
+    })
     .into_response())
 }
 
