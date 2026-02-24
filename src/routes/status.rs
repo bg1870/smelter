@@ -52,7 +52,7 @@ struct InstanceStatus {
     configuration: InstanceConfiguration,
     inputs: Vec<InputInfo>,
     outputs: Vec<OutputInfo>,
-    start_timestamp_ms: Option<u64>,
+    start_timestamp_ms: Option<i64>,
 }
 
 #[utoipa::path(
