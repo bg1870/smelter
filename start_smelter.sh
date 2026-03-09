@@ -51,7 +51,7 @@ export SMELTER_API_PORT=8081
 export SMELTER_WHIP_WHEP_SERVER_PORT=9000
 export SMELTER_START_WHIP_WHEP_SERVER=true
 export SMELTER_STUN_SERVERS="stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
-export SMELTER_START_RTMP_SERVER=false
+# export SMELTER_START_RTMP_SERVER=false
 
 # ==============================================================================
 # Rendering Configuration
