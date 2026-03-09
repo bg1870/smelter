@@ -1,19 +1,22 @@
 use bytes::Buf;
 
 use crate::{
-    AmfDecodingError, ParseError, RtmpEvent, ScriptData,
+    AmfDecodingError, RtmpEvent, RtmpMessageParseError, ScriptData,
     amf0::decode_amf0_values,
     message::{
         RtmpMessage,
+        command::CommandMessage,
         event::{audio_event_from_raw, video_event_from_raw},
+        user_control::UserControlMessage,
     },
     protocol::{MessageType, RawMessage},
 };
 
 impl RtmpMessage {
-    pub fn from_raw(mut msg: RawMessage) -> Result<Self, ParseError> {
+    pub fn from_raw(mut msg: RawMessage) -> Result<Self, RtmpMessageParseError> {
         let p = &msg.payload;
-        let result = match msg.msg_type {
+        let msg_type = MessageType::try_from_raw(msg.msg_type)?;
+        let result = match msg_type {
             MessageType::Audio => audio_event_from_raw(msg)?,
             MessageType::Video => video_event_from_raw(msg)?,
 
@@ -38,12 +41,16 @@ impl RtmpMessage {
                 // TODO: double check p[0] or p[3]
                 RtmpMessage::SetChunkSize { chunk_size }
             }
-            MessageType::SetChunkSize => return Err(ParseError::NotEnoughData),
+            MessageType::SetChunkSize => {
+                return Err(RtmpMessageParseError::PayloadTooShort);
+            }
 
             MessageType::WindowAckSize if msg.payload.len() >= 4 => RtmpMessage::WindowAckSize {
                 window_size: u32::from_be_bytes([p[0], p[1], p[2], p[3]]),
             },
-            MessageType::WindowAckSize => return Err(ParseError::NotEnoughData),
+            MessageType::WindowAckSize => {
+                return Err(RtmpMessageParseError::PayloadTooShort);
+            }
 
             MessageType::SetPeerBandwidth if msg.payload.len() >= 5 => {
                 RtmpMessage::SetPeerBandwidth {
@@ -51,7 +58,9 @@ impl RtmpMessage {
                     limit_type: p[4],
                 }
             }
-            MessageType::SetPeerBandwidth => return Err(ParseError::NotEnoughData),
+            MessageType::SetPeerBandwidth => {
+                return Err(RtmpMessageParseError::PayloadTooShort);
+            }
 
             MessageType::CommandMessageAmf3 => {
                 let format_selector = msg.payload.get_u8();
@@ -63,20 +72,24 @@ impl RtmpMessage {
                     stream_id: msg.stream_id,
                 }
             }
-            MessageType::CommandMessageAmf0 => RtmpMessage::CommandMessageAmf0 {
-                values: decode_amf0_values(msg.payload)?,
+            MessageType::CommandMessageAmf0 => RtmpMessage::CommandMessage {
+                msg: CommandMessage::from_amf0_bytes(msg.payload)?,
                 stream_id: msg.stream_id,
             },
 
+            MessageType::Acknowledgement if p.len() >= 4 => RtmpMessage::Acknowledgement {
+                bytes_received: u32::from_be_bytes([p[0], p[1], p[2], p[3]]),
+            },
             MessageType::Acknowledgement => {
-                return Err(ParseError::UnsupportedMessageType(msg.msg_type));
+                return Err(RtmpMessageParseError::PayloadTooShort);
             }
+
             MessageType::AbortMessage => {
-                return Err(ParseError::UnsupportedMessageType(msg.msg_type));
+                return Err(RtmpMessageParseError::UnsupportedMessage(format!(
+                    "{msg_type:?}",
+                )));
             }
-            MessageType::UserControl => {
-                return Err(ParseError::UnsupportedMessageType(msg.msg_type));
-            }
+            MessageType::UserControl => RtmpMessage::UserControl(UserControlMessage::from_raw(p)?),
         };
         Ok(result)
     }

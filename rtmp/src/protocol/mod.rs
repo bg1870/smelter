@@ -1,17 +1,17 @@
 use bytes::Bytes;
 
-use crate::ParseError;
+use crate::RtmpMessageParseError;
 
-mod buffered_stream_reader;
+pub(crate) mod byte_stream;
 mod chunk;
 pub(crate) mod handshake;
-pub(crate) mod message_reader;
-pub(crate) mod message_writer;
+pub(crate) mod message_stream;
 
 #[derive(Debug)]
 pub(crate) struct RawMessage {
-    pub msg_type: MessageType,
+    pub msg_type: u8,
     pub stream_id: u32,
+    pub chunk_stream_id: u32,
     pub timestamp: u32,
     pub payload: Bytes,
 }
@@ -37,7 +37,7 @@ pub enum MessageType {
 }
 
 impl MessageType {
-    pub(crate) fn try_from_raw(value: u8) -> Result<Self, ParseError> {
+    pub(crate) fn try_from_raw(value: u8) -> Result<Self, RtmpMessageParseError> {
         match value {
             1 => Ok(MessageType::SetChunkSize),
             2 => Ok(MessageType::AbortMessage),
@@ -51,7 +51,7 @@ impl MessageType {
             17 => Ok(MessageType::CommandMessageAmf3),
             18 => Ok(MessageType::DataMessageAmf0),
             20 => Ok(MessageType::CommandMessageAmf0),
-            _ => Err(ParseError::UnknownMessageType(value)),
+            _ => Err(RtmpMessageParseError::InvalidMessageType(value)),
         }
     }
 
@@ -71,23 +71,4 @@ impl MessageType {
             MessageType::CommandMessageAmf0 => 20,
         }
     }
-}
-
-// https://rtmp.veriskope.com/docs/spec/#717user-control-message-events
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(unused)]
-pub enum UserControlMessageEvent {
-    StreamBegin = 0,
-    #[allow(unused)]
-    StreamEof = 1,
-    #[allow(unused)]
-    StreamDry = 2,
-    #[allow(unused)]
-    SetBufferLength = 3,
-    #[allow(unused)]
-    StreamIsRecorded = 4,
-    #[allow(unused)]
-    PingRequest = 6,
-    #[allow(unused)]
-    PingResponse = 7,
 }

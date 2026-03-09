@@ -7,21 +7,17 @@ fn main() {
 
     let config = ServerConfig {
         port: 1935,
-        use_ssl: false,
-        cert_file: None,
-        key_file: None,
-        ca_cert_file: None,
+        tls: None,
         client_timeout_secs: 30,
     };
 
     let on_connection = Box::new(|conn: RtmpConnection| {
-        let app = conn.app;
-        let stream_key = conn.stream_key;
-        let receiver = conn.receiver;
+        let app = conn.app().to_string();
+        let stream_key = conn.stream_key().to_string();
 
         info!(?app, ?stream_key, "Received stream");
         thread::spawn(move || {
-            while let Ok(media_data) = receiver.recv() {
+            for media_data in &conn {
                 match media_data {
                     RtmpEvent::H264Config(video_config) => {
                         info!(?video_config, "video config")

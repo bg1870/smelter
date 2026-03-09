@@ -16,8 +16,9 @@ use crate::parameters::{
     EncoderContentFlags, EncoderTuningMode, EncoderUsageFlags, H264Profile, RateControl,
 };
 use crate::parser::{h264::H264Parser, reference_manager::ReferenceContext};
-use crate::vulkan_decoder::{FrameSorter, VulkanDecoder};
+use crate::vulkan_decoder::{FrameSorter, ImageModifiers, VulkanDecoder};
 use crate::vulkan_encoder::{FullEncoderParameters, VulkanEncoder};
+use crate::vulkan_transcoder::{Transcoder, TranscoderError};
 use crate::{
     BytesDecoder, BytesEncoder, DecoderError, RawFrameData, VulkanDecoderError, VulkanEncoderError,
     VulkanInitError, VulkanInstance, WgpuTexturesDecoder, WgpuTexturesEncoder, wrappers::*,
@@ -122,6 +123,11 @@ pub struct EncoderParameters {
     ///
     /// Multiple flags can be combined using the `|` operator to indicate multiple usages.
     pub content_flags: Option<EncoderContentFlags>,
+
+    /// Whether to prepend SPS/PPS NAL units inline before IDR frames.
+    /// If `false`, SPS/PPS can be retrieved separately using methods defined on the encoder.
+    /// If [`None`], defaults to `true`.
+    pub inline_stream_params: Option<bool>,
 }
 
 /// Open connection to a coding-capable device. Also contains a [`wgpu::Device`], a [`wgpu::Queue`] and
@@ -196,6 +202,9 @@ impl VulkanDevice {
         let mut vk_video_maintenance1_feature =
             vk::PhysicalDeviceVideoMaintenance1FeaturesKHR::default().video_maintenance1(true);
 
+        let mut vk_descriptor_feature = vk::PhysicalDeviceDescriptorIndexingFeatures::default()
+            .descriptor_binding_partially_bound(true);
+
         let device_create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&required_extensions_as_ptrs);
@@ -203,7 +212,8 @@ impl VulkanDevice {
         let device_create_info = wgpu_physical_device_features
             .add_to_device_create(device_create_info)
             .push_next(&mut vk_synch_2_feature)
-            .push_next(&mut vk_video_maintenance1_feature);
+            .push_next(&mut vk_video_maintenance1_feature)
+            .push_next(&mut vk_descriptor_feature);
 
         let device = unsafe {
             instance
@@ -218,11 +228,16 @@ impl VulkanDevice {
         let video_encode_queue_ext =
             ash::khr::video_encode_queue::Device::new(&instance.instance, &device);
 
+        #[cfg(feature = "vk_validation")]
+        let debug_utils_ext = ash::ext::debug_utils::Device::new(&instance.instance, &device);
+
         let device = Arc::new(Device {
             device,
             video_queue_ext,
             video_decode_queue_ext,
             video_encode_queue_ext,
+            #[cfg(feature = "vk_validation")]
+            debug_utils_ext,
             _instance: instance.instance.clone(),
         });
 
@@ -306,19 +321,14 @@ impl VulkanDevice {
         })
     }
 
-    pub fn create_wgpu_textures_decoder(
-        self: &Arc<Self>,
-        parameters: DecoderParameters,
-    ) -> Result<WgpuTexturesDecoder, DecoderError> {
+    pub(crate) fn decoding_device(self: &Arc<Self>) -> Result<DecodingDevice, VulkanDecoderError> {
         let decode_caps = self
             .native_decode_capabilities
             .as_ref()
             .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?;
         let max_profile = decode_caps.max_profile();
 
-        let parser = H264Parser::default();
-        let reference_ctx = ReferenceContext::new(parameters.missed_frame_handling);
-        let decoding_device = DecodingDevice {
+        Ok(DecodingDevice {
             vulkan_device: self.clone(),
             h264_decode_queues: self
                 .queues
@@ -329,9 +339,25 @@ impl VulkanDevice {
                 .profile(max_profile)
                 .cloned()
                 .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?,
-        };
+        })
+    }
 
-        let vulkan_decoder = VulkanDecoder::new(Arc::new(decoding_device), parameters.usage_flags)?;
+    pub fn create_wgpu_textures_decoder(
+        self: &Arc<Self>,
+        parameters: DecoderParameters,
+    ) -> Result<WgpuTexturesDecoder, DecoderError> {
+        let parser = H264Parser::default();
+        let reference_ctx = ReferenceContext::new(parameters.missed_frame_handling);
+
+        let vulkan_decoder = VulkanDecoder::new(
+            Arc::new(self.decoding_device()?),
+            parameters.usage_flags,
+            ImageModifiers {
+                additional_queue_index: self.queues.transfer.family_index,
+                create_flags: Default::default(),
+                usage_flags: Default::default(),
+            },
+        )?;
         let frame_sorter = FrameSorter::<wgpu::Texture>::new();
 
         Ok(WgpuTexturesDecoder {
@@ -346,28 +372,18 @@ impl VulkanDevice {
         self: &Arc<Self>,
         parameters: DecoderParameters,
     ) -> Result<BytesDecoder, DecoderError> {
-        let decode_caps = self
-            .native_decode_capabilities
-            .as_ref()
-            .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?;
-        let max_profile = decode_caps.max_profile();
-
         let parser = H264Parser::default();
         let reference_ctx = ReferenceContext::new(parameters.missed_frame_handling);
-        let decoding_device = DecodingDevice {
-            vulkan_device: self.clone(),
-            h264_decode_queues: self
-                .queues
-                .h264_decode
-                .clone()
-                .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?,
-            profile_capabilities: decode_caps
-                .profile(max_profile)
-                .cloned()
-                .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?,
-        };
 
-        let vulkan_decoder = VulkanDecoder::new(Arc::new(decoding_device), parameters.usage_flags)?;
+        let vulkan_decoder = VulkanDecoder::new(
+            Arc::new(self.decoding_device()?),
+            parameters.usage_flags,
+            ImageModifiers {
+                additional_queue_index: self.queues.transfer.family_index,
+                create_flags: Default::default(),
+                usage_flags: Default::default(),
+            },
+        )?;
         let frame_sorter = FrameSorter::<RawFrameData>::new();
 
         Ok(BytesDecoder {
@@ -376,6 +392,15 @@ impl VulkanDevice {
             vulkan_decoder,
             frame_sorter,
         })
+    }
+
+    /// Create a single-input multiple-output transcoder.
+    /// Each item in `parameters` corresponds to one output.
+    pub fn create_transcoder(
+        self: &Arc<Self>,
+        parameters: &[EncoderParameters],
+    ) -> Result<Transcoder, TranscoderError> {
+        Transcoder::new(self.clone(), parameters.into())
     }
 
     pub fn wgpu_device(&self) -> wgpu::Device {
@@ -390,12 +415,8 @@ impl VulkanDevice {
         self.wgpu_adapter.clone()
     }
 
-    pub fn create_bytes_encoder(
-        self: &Arc<Self>,
-        parameters: EncoderParameters,
-    ) -> Result<BytesEncoder, VulkanEncoderError> {
-        let parameters = self.validate_and_fill_encoder_parameters(parameters)?;
-        let encoding_device = EncodingDevice {
+    pub(crate) fn encoding_device(self: &Arc<Self>) -> Result<EncodingDevice, VulkanEncoderError> {
+        Ok(EncodingDevice {
             vulkan_device: self.clone(),
             h264_encode_queues: self
                 .queues
@@ -406,8 +427,16 @@ impl VulkanDevice {
                 .native_encode_capabilities
                 .clone()
                 .ok_or(VulkanEncoderError::VulkanEncoderUnsupported)?,
-        };
-        let encoder = VulkanEncoder::new(Arc::new(encoding_device), parameters)?;
+        })
+    }
+
+    pub fn create_bytes_encoder(
+        self: &Arc<Self>,
+        parameters: EncoderParameters,
+    ) -> Result<BytesEncoder, VulkanEncoderError> {
+        let parameters = self.validate_and_fill_encoder_parameters(parameters)?;
+        let encoder = VulkanEncoder::new(Arc::new(self.encoding_device()?), parameters)?;
+
         Ok(BytesEncoder {
             vulkan_encoder: encoder,
         })
@@ -463,6 +492,7 @@ impl VulkanDevice {
             usage_flags: Some(EncoderUsageFlags::DEFAULT),
             content_flags: Some(EncoderContentFlags::DEFAULT),
             tuning_mode: Some(EncoderTuningMode::LOW_LATENCY),
+            inline_stream_params: None,
         })
     }
 
@@ -490,10 +520,11 @@ impl VulkanDevice {
             usage_flags: Some(EncoderUsageFlags::DEFAULT),
             content_flags: Some(EncoderContentFlags::DEFAULT),
             tuning_mode: Some(EncoderTuningMode::HIGH_QUALITY),
+            inline_stream_params: None,
         })
     }
 
-    fn validate_and_fill_encoder_parameters(
+    pub(crate) fn validate_and_fill_encoder_parameters(
         &self,
         encoder_parameters: EncoderParameters,
     ) -> Result<FullEncoderParameters, VulkanEncoderError> {
@@ -649,6 +680,7 @@ impl VulkanDevice {
             usage_flags,
             tuning_mode,
             content_flags,
+            inline_stream_params: encoder_parameters.inline_stream_params.unwrap_or(true),
         })
     }
 

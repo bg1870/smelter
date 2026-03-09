@@ -14,8 +14,8 @@ use crate::{
     parameters::H264Profile,
     wrappers::{
         Buffer, CommandBufferPool, CommandBufferPoolStorage, DecodedPicturesBuffer, Image,
-        ImageLayoutTracker, ImageView, OpenCommandBuffer, ProfileInfo, QueryPool, Tracker,
-        TrackerKind, TrackerWait, VideoEncodeQueueExt, VideoQueueExt, VideoSession,
+        ImageLayoutTracker, ImageView, OpenCommandBuffer, ProfileInfo, QueryPool,
+        SemaphoreWaitValue, Tracker, TrackerKind, VideoEncodeQueueExt, VideoQueueExt, VideoSession,
         VideoSessionParameters,
     },
 };
@@ -274,12 +274,13 @@ struct EncodeFeedback {
 
 pub(crate) enum EncoderTrackerWaitState {
     InitializeEncoder,
+    ResizeInput,
     CopyBufferToImage,
     CopyImageToImage,
     Encode,
 }
 
-struct EncoderCommandBufferPools {
+pub(crate) struct EncoderCommandBufferPools {
     transfer: CommandBufferPool,
     encode: CommandBufferPool,
 }
@@ -300,13 +301,13 @@ impl EncoderCommandBufferPools {
 }
 
 impl CommandBufferPoolStorage for EncoderCommandBufferPools {
-    fn mark_submitted_as_free(&mut self) {
-        self.transfer.mark_submitted_as_free();
-        self.encode.mark_submitted_as_free();
+    fn mark_submitted_as_free(&mut self, last_waited_for: SemaphoreWaitValue) {
+        self.transfer.mark_submitted_as_free(last_waited_for);
+        self.encode.mark_submitted_as_free(last_waited_for);
     }
 }
 
-struct EncoderTrackerKind {}
+pub(crate) struct EncoderTrackerKind {}
 
 impl TrackerKind for EncoderTrackerKind {
     type WaitState = EncoderTrackerWaitState;
@@ -314,13 +315,69 @@ impl TrackerKind for EncoderTrackerKind {
     type CommandBufferPools = EncoderCommandBufferPools;
 }
 
-type EncoderTracker = Tracker<EncoderTrackerKind>;
+pub(crate) type EncoderTracker = Tracker<EncoderTrackerKind>;
+
+pub(crate) struct EncodeSubmission<'borrow, 'encoder> {
+    pub(crate) is_idr: bool,
+    pub(crate) wait_value: SemaphoreWaitValue,
+    pub(crate) encoder: &'borrow mut VulkanEncoder<'encoder>,
+    pub(crate) pts: Option<u64>,
+    _image: Arc<Image>,
+}
+
+impl<'a, 'b> EncodeSubmission<'a, 'b> {
+    pub(crate) fn download(self) -> Result<EncodedOutputChunk<Vec<u8>>, VulkanEncoderError> {
+        self.encoder.download_output(self.is_idr, self.pts)
+    }
+
+    pub(crate) fn mark_waited(&mut self) {
+        self.encoder.tracker.mark_waited(self.wait_value);
+    }
+
+    pub(crate) fn wait(&mut self, timeout: u64) -> Result<(), VulkanEncoderError> {
+        self.encoder.tracker.wait_for(self.wait_value, timeout)?;
+        Ok(())
+    }
+}
+
+pub(crate) struct UnwaitedEncodeSubmission<'a, 'b>(pub(crate) EncodeSubmission<'a, 'b>);
+
+impl<'a, 'b> UnwaitedEncodeSubmission<'a, 'b> {
+    pub(crate) fn mark_waited(mut self) -> WaitedEncodeSubmission<'a, 'b> {
+        self.0.mark_waited();
+        WaitedEncodeSubmission(self.0)
+    }
+
+    pub(crate) fn wait(
+        mut self,
+        timeout: u64,
+    ) -> Result<WaitedEncodeSubmission<'a, 'b>, VulkanEncoderError> {
+        self.0.wait(timeout)?;
+        Ok(WaitedEncodeSubmission(self.0))
+    }
+
+    pub(crate) fn wait_and_download(
+        self,
+        timeout: u64,
+    ) -> Result<EncodedOutputChunk<Vec<u8>>, VulkanEncoderError> {
+        let waited = self.wait(timeout)?;
+        waited.download()
+    }
+}
+
+pub struct WaitedEncodeSubmission<'a, 'b>(pub(crate) EncodeSubmission<'a, 'b>);
+
+impl<'a, 'b> WaitedEncodeSubmission<'a, 'b> {
+    pub(crate) fn download(self) -> Result<EncodedOutputChunk<Vec<u8>>, VulkanEncoderError> {
+        self.0.download()
+    }
+}
 
 pub struct VulkanEncoder<'a> {
-    tracker: EncoderTracker,
+    pub(crate) tracker: EncoderTracker,
     query_pool: EncodingQueryPool,
     profile: H264Profile,
-    profile_info: H264EncodeProfileInfo<'a>,
+    pub(crate) profile_info: H264EncodeProfileInfo<'a>,
     session_resources: VideoSessionResources<'a>,
     idr_period_counter: u32,
     idr_period: u32,
@@ -331,6 +388,7 @@ pub struct VulkanEncoder<'a> {
     pic_order_cnt: u8,
     active_reference_slots: VecDeque<(usize, vk::native::StdVideoEncodeH264ReferenceInfo)>,
     rate_control: RateControl,
+    inline_stream_params: bool,
     encoding_device: Arc<EncodingDevice>,
 }
 
@@ -347,9 +405,10 @@ pub struct FullEncoderParameters {
     pub(crate) usage_flags: vk::VideoEncodeUsageFlagsKHR,
     pub(crate) tuning_mode: vk::VideoEncodeTuningModeKHR,
     pub(crate) content_flags: vk::VideoEncodeContentFlagsKHR,
+    pub(crate) inline_stream_params: bool,
 }
 
-impl VulkanEncoder<'_> {
+impl<'a> VulkanEncoder<'a> {
     const OUTPUT_BUFFER_LEN: u64 = 4 * MB;
 
     pub(crate) fn new(
@@ -359,8 +418,11 @@ impl VulkanEncoder<'_> {
         let profile_info = H264EncodeProfileInfo::new_encode(&parameters);
 
         let command_buffer_pools = EncoderCommandBufferPools::new(&encoding_device)?;
-        let mut tracker =
-            EncoderTracker::new(encoding_device.device.clone(), command_buffer_pools)?;
+        let mut tracker = EncoderTracker::new(
+            encoding_device.device.clone(),
+            command_buffer_pools,
+            Some("encoder"),
+        )?;
 
         let query_pool = EncodingQueryPool::new(
             &encoding_device,
@@ -434,6 +496,7 @@ impl VulkanEncoder<'_> {
             idr_period: parameters.idr_period.get(),
             output_buffer,
             rate_control: parameters.rate_control,
+            inline_stream_params: parameters.inline_stream_params,
         })
     }
 
@@ -710,6 +773,9 @@ impl VulkanEncoder<'_> {
             .unwrap()
             .clone();
 
+        // this has to be raw, because normally we have our own command buffer that tracks this.
+        // since we don't have our buffer here and this is only one transition, we can do it
+        // ourselves.
         self.input_image.transition_layout_raw(
             buffer,
             &mut layout,
@@ -774,25 +840,21 @@ impl VulkanEncoder<'_> {
             )
         };
 
-        self.tracker.wait(u64::MAX)?;
+        // TODO: dont wait for all here
+        self.tracker.wait_for_all(u64::MAX)?;
 
-        let mut wgpu_fence = wgpu::hal::vulkan::Fence::TimelineSemaphore(
-            self.tracker.semaphore_tracker.semaphore.semaphore,
-        );
-        let signal_value = self.tracker.semaphore_tracker.next_sem_value();
-
+        let mut semaphore_submit_info = self
+            .tracker
+            .semaphore_tracker
+            .next_submit_info(EncoderTrackerWaitState::CopyImageToImage);
         unsafe {
             wgpu_queue.submit(
                 &[&encoder.end_encoding()?],
                 &[],
-                (&mut wgpu_fence, signal_value),
+                semaphore_submit_info.wgpu_wait_info(),
             )?;
         }
-
-        self.tracker.semaphore_tracker.wait_for = Some(TrackerWait {
-            value: signal_value,
-            _state: EncoderTrackerWaitState::CopyImageToImage,
-        });
+        semaphore_submit_info.mark_submitted();
 
         self.tracker
             .image_layout_tracker
@@ -804,11 +866,12 @@ impl VulkanEncoder<'_> {
         Ok(encoder)
     }
 
-    fn encode(
-        &mut self,
+    pub(crate) fn encode<'b>(
+        &'b mut self,
         image: Arc<Image>,
         force_idr: bool,
-    ) -> Result<Vec<u8>, VulkanEncoderError> {
+        pts: Option<u64>,
+    ) -> Result<UnwaitedEncodeSubmission<'b, 'a>, VulkanEncoderError> {
         let is_idr = force_idr || self.idr_period_counter == 0;
         let mut idr_pic_id = 0;
 
@@ -1116,48 +1179,48 @@ impl VulkanEncoder<'_> {
                 );
         }
 
-        self.encoding_device
+        let wait_value = self
+            .encoding_device
             .h264_encode_queues
             .submit_chain_semaphore(
                 cmd_buffer.end()?,
                 &mut self.tracker,
-                vk::PipelineStageFlags2::VIDEO_ENCODE_KHR,
+                vk::PipelineStageFlags2::ALL_COMMANDS,
                 vk::PipelineStageFlags2::ALL_COMMANDS,
                 EncoderTrackerWaitState::Encode,
             )?;
 
-        self.tracker.wait(u64::MAX)?;
+        self.active_reference_slots
+            .push_back((setup_reference_slot_idx, std_new_slot_reference_info));
 
+        self.idr_period_counter += 1;
+        self.idr_period_counter %= self.idr_period;
+
+        Ok(UnwaitedEncodeSubmission(EncodeSubmission {
+            is_idr,
+            encoder: self,
+            wait_value,
+            pts,
+            _image: image,
+        }))
+    }
+
+    pub fn download_output(
+        &mut self,
+        is_idr: bool,
+        pts: Option<u64>,
+    ) -> Result<EncodedOutputChunk<Vec<u8>>, VulkanEncoderError> {
         let feedback = self.query_pool.get_result_blocking()?;
 
         if feedback.status != vk::QueryResultStatusKHR::COMPLETE {
             return Err(VulkanEncoderError::EncodeOperationFailed(feedback.status));
         }
 
-        let mut output = if is_idr {
-            let mut h264_get_info = vk::VideoEncodeH264SessionParametersGetInfoKHR::default()
-                .write_std_sps(true)
-                .write_std_pps(true)
-                .std_sps_id(0)
-                .std_pps_id(0);
-
-            let get_info = vk::VideoEncodeSessionParametersGetInfoKHR::default()
-                .video_session_parameters(self.session_resources.parameters.parameters)
-                .push_next(&mut h264_get_info);
-
-            unsafe {
-                self.encoding_device
-                    .vulkan_device
-                    .device
-                    .video_encode_queue_ext
-                    .get_encoded_video_session_parameters_khr(&get_info, None)?
-            }
+        let mut output = if is_idr && self.inline_stream_params {
+            self.stream_parameters(true, true)?
         } else {
             Vec::new()
         };
-
-        self.active_reference_slots
-            .push_back((setup_reference_slot_idx, std_new_slot_reference_info));
 
         let encoded = unsafe {
             self.output_buffer
@@ -1166,10 +1229,41 @@ impl VulkanEncoder<'_> {
 
         output.extend_from_slice(&encoded);
 
-        self.idr_period_counter += 1;
-        self.idr_period_counter %= self.idr_period;
+        Ok(EncodedOutputChunk {
+            data: output,
+            pts,
+            is_keyframe: is_idr,
+        })
+    }
 
-        Ok(output)
+    pub fn stream_parameters(
+        &self,
+        write_sps: bool,
+        write_pps: bool,
+    ) -> Result<Vec<u8>, VulkanEncoderError> {
+        if !write_sps && !write_pps {
+            return Ok(Vec::new());
+        }
+
+        let mut h264_get_info = vk::VideoEncodeH264SessionParametersGetInfoKHR::default()
+            .write_std_sps(write_sps)
+            .write_std_pps(write_pps)
+            .std_sps_id(0)
+            .std_pps_id(0);
+
+        let get_info = vk::VideoEncodeSessionParametersGetInfoKHR::default()
+            .video_session_parameters(self.session_resources.parameters.parameters)
+            .push_next(&mut h264_get_info);
+
+        let data = unsafe {
+            self.encoding_device
+                .vulkan_device
+                .device
+                .video_encode_queue_ext
+                .get_encoded_video_session_parameters_khr(&get_info, None)?
+        };
+
+        Ok(data)
     }
 
     pub fn encode_bytes(
@@ -1178,17 +1272,13 @@ impl VulkanEncoder<'_> {
         force_idr: bool,
     ) -> Result<EncodedOutputChunk<Vec<u8>>, VulkanEncoderError> {
         let (image, _buffer) = self.transfer_buffer_to_image(frame)?;
-
         let image = Arc::new(image);
 
-        let is_keyframe = force_idr || self.idr_period_counter == 0;
-        let result = self.encode(image, force_idr)?;
+        let result = self
+            .encode(image, force_idr, frame.pts)?
+            .wait_and_download(u64::MAX)?;
 
-        Ok(EncodedOutputChunk {
-            data: result,
-            pts: frame.pts,
-            is_keyframe,
-        })
+        Ok(result)
     }
 
     /// # Safety
@@ -1201,21 +1291,18 @@ impl VulkanEncoder<'_> {
     ) -> Result<EncodedOutputChunk<Vec<u8>>, VulkanEncoderError> {
         let _cmd_encoder = self.copy_wgpu_texture_to_image(&frame)?;
 
-        let is_keyframe = force_idr || self.idr_period_counter == 0;
-        let result = self.encode(self.input_image.clone(), force_idr)?;
+        let result = self
+            .encode(self.input_image.clone(), force_idr, frame.pts)?
+            .wait_and_download(u64::MAX)?;
 
-        Ok(EncodedOutputChunk {
-            data: result,
-            pts: frame.pts,
-            is_keyframe,
-        })
+        Ok(result)
     }
 
-    fn encoder_rate_control_for<'a>(
+    fn encoder_rate_control_for<'b>(
         &self,
         rate_control: RateControl,
-        layers: Option<&'a [vk::VideoEncodeRateControlLayerInfoKHR]>,
-    ) -> Option<vk::VideoEncodeRateControlInfoKHR<'a>> {
+        layers: Option<&'b [vk::VideoEncodeRateControlLayerInfoKHR]>,
+    ) -> Option<vk::VideoEncodeRateControlInfoKHR<'b>> {
         let layers = layers?;
 
         match rate_control {
@@ -1273,11 +1360,11 @@ impl VulkanEncoder<'_> {
         Some(vec![layer_info])
     }
 
-    fn rate_control_layers_for<'a>(
+    fn rate_control_layers_for<'b>(
         &self,
         rate_control: RateControl,
-        h264_layer_info: Option<&'a mut [vk::VideoEncodeH264RateControlLayerInfoKHR<'a>]>,
-    ) -> Option<Vec<vk::VideoEncodeRateControlLayerInfoKHR<'a>>> {
+        h264_layer_info: Option<&'b mut [vk::VideoEncodeH264RateControlLayerInfoKHR<'b>]>,
+    ) -> Option<Vec<vk::VideoEncodeRateControlLayerInfoKHR<'b>>> {
         let h264_layer_info = h264_layer_info?;
         let mut layer_info = vk::VideoEncodeRateControlLayerInfoKHR::default()
             .frame_rate_numerator(self.session_resources.framerate.numerator)

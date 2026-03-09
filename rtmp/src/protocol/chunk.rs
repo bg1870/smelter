@@ -1,14 +1,13 @@
 use std::collections::VecDeque;
 
-use crate::{ParseError, RtmpError};
+use bytes::{BufMut, Bytes, BytesMut};
 
-#[derive(thiserror::Error, Debug)]
-pub(super) enum ParseChunkError {
-    #[error("Not enough data")]
+use crate::RtmpMessageSerializeError;
+
+#[derive(Debug)]
+pub(crate) enum ParseChunkError {
     NotEnoughData,
-
-    #[error(transparent)]
-    RtmpError(#[from] RtmpError),
+    MalformedStream(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -74,6 +73,32 @@ impl ChunkBaseHeader {
             n => (n as u32, 1_usize),
         };
         Ok((Self { fmt, cs_id }, offset))
+    }
+
+    pub fn serialize(&self) -> Result<Bytes, RtmpMessageSerializeError> {
+        let fmt_bits = ((self.fmt as u8) & 0b0000_0011) << 6;
+        match self.cs_id {
+            0 | 1 => Err(RtmpMessageSerializeError::InternalError(
+                "Chunk stream ID 0 and 1 are reserved.".into(),
+            )),
+            2..=63 => {
+                let mut buf = BytesMut::with_capacity(1);
+                buf.extend_from_slice(&[fmt_bits | self.cs_id as u8]);
+                Ok(buf.freeze())
+            }
+            64..=319 => {
+                let mut buf = BytesMut::with_capacity(2);
+                buf.extend_from_slice(&[fmt_bits, (self.cs_id - 64) as u8]);
+                Ok(buf.freeze())
+            }
+            _ => {
+                let id = (self.cs_id - 64) as u16;
+                let le = id.to_le_bytes();
+                let mut buf = BytesMut::with_capacity(3);
+                buf.extend_from_slice(&[fmt_bits | 0b0000_0001, le[0], le[1]]);
+                Ok(buf.freeze())
+            }
+        }
     }
 }
 
@@ -155,6 +180,48 @@ impl ChunkMessageHeader {
         };
         Ok((header, offset))
     }
+
+    pub fn chunk_type(&self) -> ChunkType {
+        match self {
+            ChunkMessageHeader::Full { .. } => ChunkType::Full,
+            ChunkMessageHeader::NoMessageStreamId { .. } => ChunkType::NoMessageStreamId,
+            ChunkMessageHeader::TimestampOnly { .. } => ChunkType::TimestampOnly,
+            ChunkMessageHeader::NoHeader => ChunkType::NoHeader,
+        }
+    }
+
+    pub fn serialize(self) -> Bytes {
+        match self {
+            ChunkMessageHeader::Full {
+                timestamp,
+                msg_len,
+                msg_type_id,
+                msg_stream_id,
+            } => {
+                let mut buf = BytesMut::with_capacity(11);
+                buf.put(&timestamp.to_be_bytes()[1..4]);
+                buf.put(&msg_len.to_be_bytes()[1..4]);
+                buf.put_u8(msg_type_id);
+                buf.put(&msg_stream_id.to_le_bytes()[..]);
+                buf.freeze()
+            }
+            ChunkMessageHeader::NoMessageStreamId {
+                timestamp_delta,
+                msg_len,
+                msg_type_id,
+            } => {
+                let mut buf = BytesMut::with_capacity(7);
+                buf.put(&timestamp_delta.to_be_bytes()[1..4]);
+                buf.put(&msg_len.to_be_bytes()[1..4]);
+                buf.put_u8(msg_type_id);
+                buf.freeze()
+            }
+            ChunkMessageHeader::TimestampOnly { timestamp_delta } => {
+                Bytes::copy_from_slice(&timestamp_delta.to_be_bytes()[1..4])
+            }
+            ChunkMessageHeader::NoHeader => Bytes::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -179,8 +246,15 @@ pub(crate) enum ChunkHeaderTimestamp {
 impl ChunkHeaderTimestamp {
     pub fn has_extended(&self) -> bool {
         match self {
-            ChunkHeaderTimestamp::Timestamp(ts) => *ts == 0xFFFFFF,
-            ChunkHeaderTimestamp::Delta(ts) => *ts == 0xFFFFFF,
+            ChunkHeaderTimestamp::Timestamp(ts) => *ts == 0x00FFFFFF,
+            ChunkHeaderTimestamp::Delta(ts) => *ts == 0x00FFFFFF,
+        }
+    }
+
+    pub fn value(&self) -> u32 {
+        match self {
+            ChunkHeaderTimestamp::Timestamp(ts) => *ts,
+            ChunkHeaderTimestamp::Delta(ts) => *ts,
         }
     }
 }
@@ -194,7 +268,7 @@ pub(crate) struct VirtualMessageHeader {
 }
 
 impl VirtualMessageHeader {
-    pub fn from_msg(prev: Option<Self>, msg_header: ChunkMessageHeader) -> Result<Self, RtmpError> {
+    pub fn from_msg(prev: Option<Self>, msg_header: ChunkMessageHeader) -> Result<Self, String> {
         match (msg_header, prev) {
             (
                 ChunkMessageHeader::Full {
@@ -236,10 +310,7 @@ impl VirtualMessageHeader {
                 };
                 Ok(prev)
             }
-            (_, None) => Err(ParseError::MalformedPacket(
-                "Type-0 header needs to be a first packet in a chunk stream",
-            )
-            .into()),
+            (_, None) => Err("Type-0 header needs to be a first packet in a chunk stream".into()),
         }
     }
 }

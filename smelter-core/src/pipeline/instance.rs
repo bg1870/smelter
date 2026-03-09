@@ -29,7 +29,9 @@ use crate::{
         input::{PipelineInput, new_external_input, register_pipeline_input},
         output::{OutputSender, PipelineOutput, new_external_output, register_pipeline_output},
         rtmp::spawn_rtmp_server,
-        webrtc::{WhipWhepPipelineState, WhipWhepServer, WhipWhepServerHandle},
+        webrtc::{
+            WebrtcSettingEngineCtx, WhipWhepPipelineState, WhipWhepServer, WhipWhepServerHandle,
+        },
     },
     queue::{Queue, QueueAudioOutput, QueueOptions, QueueVideoOutput},
     stats::StatsMonitor,
@@ -387,7 +389,8 @@ impl Pipeline {
 impl Drop for Pipeline {
     fn drop(&mut self) {
         info!("Stopping pipeline");
-        self.queue.shutdown()
+        self.queue.shutdown();
+        self.ctx.webrtc_setting_engine.close();
     }
 }
 
@@ -452,6 +455,7 @@ fn run_renderer_thread(
 
             if frame_sender.send(PipelineEvent::Data(frame)).is_err() {
                 warn!(?output_id, "Failed to send output frames. Channel closed.");
+                renderer.unregister_output(&output_id);
             }
         }
     }
@@ -517,6 +521,7 @@ fn run_audio_mixer_thread(
 
             if samples_sender.send(PipelineEvent::Data(batch)).is_err() {
                 warn!(?output_id, "Failed to send mixed audio. Channel closed.");
+                audio_mixer.unregister_output(&output_id);
             }
         }
     }
@@ -566,9 +571,19 @@ fn create_pipeline(opts: PipelineOptions) -> Result<Pipeline, InitPipelineError>
     let (stats_monitor, stats_sender) = StatsMonitor::new();
 
     let rtmp_state = match opts.rtmp_server {
-        PipelineRtmpServerOptions::Enable { port } => Some(RtmpPipelineState::new(port)),
+        PipelineRtmpServerOptions::Enable {
+            port,
+            tls_cert_file,
+            tls_key_file,
+        } => Some(RtmpPipelineState::new(port, tls_cert_file, tls_key_file)),
         PipelineRtmpServerOptions::Disable => None,
     };
+
+    let webrtc_setting_engine = WebrtcSettingEngineCtx::new(
+        opts.webrtc_nat_1to1_ips,
+        opts.webrtc_udp_port_strategy,
+        &tokio_rt,
+    )?;
 
     let ctx = Arc::new(PipelineCtx {
         queue_sync_point: Instant::now(),
@@ -589,8 +604,7 @@ fn create_pipeline(opts: PipelineOptions) -> Result<Pipeline, InitPipelineError>
             PipelineWhipWhepServerOptions::Disable => None,
         },
         webrtc_stun_servers: opts.webrtc_stun_servers.clone(),
-        webrtc_port_range: opts.webrtc_port_range,
-        webrtc_nat_1to1_ips: opts.webrtc_nat_1to1_ips,
+        webrtc_setting_engine,
         rtmp_state: rtmp_state.clone(),
     });
 

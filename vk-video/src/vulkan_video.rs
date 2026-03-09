@@ -121,8 +121,8 @@ pub enum VulkanCommonError {
     #[error("DPB can have at most 32 slots, {0} was requested")]
     DpbTooLong(u32),
 
-    #[error("Tried to create a semaphore submit that waits for an unsignaled value")]
-    SemaphoreSubmitWaitOnUnsignaledValue,
+    #[error("Tried to wait for an unsignaled semaphore value")]
+    SemaphoreWaitOnUnsignaledValue,
 
     #[error("Tried to register {0:x?} as a new image, while it already exists")]
     RegisteredNewImageTwice(ImageKey),
@@ -132,6 +132,9 @@ pub enum VulkanCommonError {
 
     #[error("Tried to unregister image {0:x?} that was not registered")]
     UnregisteredNonexistentImage(ImageKey),
+
+    #[error("Unsupported image aspect: {0:?}")]
+    UnsupportedImageAspect(vk::ImageAspectFlags),
 }
 
 /// Represents a chunk of encoded video data used for decoding.
@@ -283,6 +286,22 @@ impl BytesEncoder {
     ) -> Result<EncodedOutputChunk<Vec<u8>>, VulkanEncoderError> {
         self.vulkan_encoder.encode_bytes(frame, force_keyframe)
     }
+
+    /// Retrieve encoded SPS NAL units from the video session parameters, in Annex B.
+    ///
+    /// Useful when `inline_stream_params` is `false` and the parameters need to be
+    /// sent out-of-band (e.g. in RTMP or MP4 headers).
+    pub fn sps(&self) -> Result<Vec<u8>, VulkanEncoderError> {
+        self.vulkan_encoder.stream_parameters(true, false)
+    }
+
+    /// Retrieve encoded PPS NAL units from the video session parameters, in Annex B.
+    ///
+    /// Useful when `inline_stream_params` is `false` and the parameters need to be
+    /// sent out-of-band (e.g. in RTMP or MP4 headers).
+    pub fn pps(&self) -> Result<Vec<u8>, VulkanEncoderError> {
+        self.vulkan_encoder.stream_parameters(false, true)
+    }
 }
 
 /// An encoder that takes input frames as [`wgpu::Texture`]s (in [`wgpu::TextureFormat::NV12`])
@@ -339,5 +358,21 @@ impl WgpuTexturesEncoder {
         force_keyframe: bool,
     ) -> Result<EncodedOutputChunk<Vec<u8>>, VulkanEncoderError> {
         unsafe { self.vulkan_encoder.encode_texture(frame, force_keyframe) }
+    }
+
+    /// Retrieve encoded SPS NAL units from the video session parameters, in Annex B.
+    ///
+    /// Useful when `inline_stream_params` is `false` and the parameters need to be
+    /// sent out-of-band (e.g. in RTMP or MP4 headers).
+    pub fn sps(&self) -> Result<Vec<u8>, VulkanEncoderError> {
+        self.vulkan_encoder.stream_parameters(true, false)
+    }
+
+    /// Retrieve encoded PPS NAL units from the video session parameters, in Annex B.
+    ///
+    /// Useful when `inline_stream_params` is `false` and the parameters need to be
+    /// sent out-of-band (e.g. in RTMP or MP4 headers).
+    pub fn pps(&self) -> Result<Vec<u8>, VulkanEncoderError> {
+        self.vulkan_encoder.stream_parameters(false, true)
     }
 }
