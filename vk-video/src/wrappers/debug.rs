@@ -138,6 +138,7 @@ impl DecodingQueryPool {
         Ok(Self { pool })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn get_result_blocking(
         &self,
     ) -> Result<vk::QueryResultStatusKHR, VulkanDecoderError> {
@@ -152,6 +153,15 @@ impl DecodingQueryPool {
         };
 
         Ok(result)
+    }
+
+    pub(crate) fn check_results_blocking(&self) -> Result<(), VulkanDecoderError> {
+        let result = self.get_result_blocking()?;
+        if result.as_raw() < 0 {
+            return Err(VulkanDecoderError::DecodeOperationFailed(result));
+        }
+
+        Ok(())
     }
 }
 

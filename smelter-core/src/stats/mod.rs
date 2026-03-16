@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     sync::{Arc, Mutex, Weak},
     thread,
 };
@@ -7,21 +7,27 @@ use std::{
 use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
 use serde::Serialize;
 use tracing::warn;
+use utoipa::ToSchema;
 
-use crate::stats::{input_reports::InputStatsReport, state::StatsState};
+use crate::stats::{
+    input_reports::InputStatsReport, output_reports::OutputStatsReport, state::StatsState,
+};
 
-mod input_events;
+mod input;
 mod input_reports;
-mod input_state;
+mod output;
+mod output_reports;
 mod state;
 mod utils;
 
-pub(crate) use input_events::*;
+pub(crate) use input::*;
+pub(crate) use output::*;
 pub(crate) use state::StatsEvent;
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ToSchema)]
 pub struct StatsReport {
-    pub inputs: HashMap<String, InputStatsReport>,
+    pub inputs: BTreeMap<String, InputStatsReport>,
+    pub outputs: BTreeMap<String, OutputStatsReport>,
 }
 
 pub(crate) struct StatsMonitor(Arc<Mutex<StatsState>>);
@@ -54,6 +60,11 @@ impl StatsMonitor {
                 .inputs
                 .iter_mut()
                 .map(|(input_ref, (_, input))| (input_ref.to_unique_string(), input.report()))
+                .collect(),
+            outputs: guard
+                .outputs
+                .iter_mut()
+                .map(|(output_ref, (_, output))| (output_ref.to_unique_string(), output.report()))
                 .collect(),
         }
     }

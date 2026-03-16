@@ -28,6 +28,10 @@ impl RtmpServerInput {
             return Err(RtmpServerError::ServerNotRunning.into());
         };
 
+        ctx.stats_sender.send(StatsEvent::NewInput {
+            input_ref: input_ref.clone(),
+            kind: InputProtocolKind::Rtmp,
+        });
         let (frame_sender, frame_receiver) = bounded(5);
         let (input_samples_sender, input_samples_receiver) = bounded(5);
         let buffer = InputBuffer::new(&ctx, options.buffer);
@@ -39,7 +43,7 @@ impl RtmpServerInput {
                 stream_key: options.stream_key,
                 frame_sender,
                 input_samples_sender,
-                video_decoders: options.video_decoders,
+                decoders: options.decoders,
                 buffer,
             },
         )?;

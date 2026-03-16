@@ -1,14 +1,10 @@
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, Weak},
     time::Duration,
 };
 
 use rand::Rng;
-use tokio::{
-    sync::watch,
-    task::JoinHandle,
-    time::{sleep, timeout},
-};
+use tokio::{sync::watch, time::timeout};
 use tracing::debug;
 use webrtc::{
     api::{
@@ -35,13 +31,15 @@ use webrtc::{
 
 use crate::pipeline::webrtc::{
     error::WhipWhepServerError,
+    h264_offer_filter::filter_h264_codecs_by_offer,
     supported_codec_parameters::{h264_codec_params, vp8_codec_params, vp9_codec_params},
-    whep_output::cleanup_session_handler::OnCleanupSessionHdlr,
 };
 
 use crate::prelude::*;
 
-#[derive(Debug, Clone)]
+use super::pc_state_change::ConnectionStateChangeHdlr;
+
+#[derive(Debug)]
 pub(crate) struct PeerConnection {
     pc: Arc<RTCPeerConnection>,
 }
@@ -51,6 +49,7 @@ impl PeerConnection {
         ctx: &Arc<PipelineCtx>,
         video_encoder: &Option<VideoEncoderOptions>,
         audio_encoder: &Option<AudioEncoderOptions>,
+        offer: &RTCSessionDescription,
     ) -> Result<Self, WhipWhepServerError> {
         let mut media_engine = MediaEngine::default();
 
@@ -58,6 +57,7 @@ impl PeerConnection {
             &mut media_engine,
             video_encoder.clone(),
             audio_encoder.clone(),
+            offer,
         )?;
 
         let registry = register_default_interceptors(Registry::new(), &mut media_engine)?;
@@ -187,11 +187,10 @@ impl PeerConnection {
 
     pub async fn negotiate_connection(
         &self,
-        offer: String,
+        offer: RTCSessionDescription,
         video_sender: Option<Arc<RTCRtpSender>>,
         audio_sender: Option<Arc<RTCRtpSender>>,
     ) -> Result<RTCSessionDescription, WhipWhepServerError> {
-        let offer = RTCSessionDescription::offer(offer)?;
         self.set_remote_description(offer).await?;
 
         // allow audio/video only stream, when on second track codec wasn't succesfully negotiated
@@ -242,25 +241,41 @@ impl PeerConnection {
         Ok(self.pc.add_ice_candidate(candidate).await?)
     }
 
-    pub async fn close(&self) -> Result<(), WhipWhepServerError> {
-        Ok(self.pc.close().await?)
+    pub fn on_connection_state_change(&self, handler: ConnectionStateChangeHdlr) {
+        let pc = self.pc.clone();
+        self.pc
+            .on_peer_connection_state_change(Box::new(move |state: RTCPeerConnectionState| {
+                handler.on_state_change(&pc, state);
+                Box::pin(async {})
+            }));
     }
 
-    pub fn on_peer_connection_cleanup(&self, cleanup_session_handler: OnCleanupSessionHdlr) {
-        let pc = self.pc.clone();
-        let cleanup_task_handle = Arc::new(Mutex::new(None));
+    pub fn downgrade(&self) -> WeakPeerConnection {
+        WeakPeerConnection {
+            pc: Arc::downgrade(&self.pc),
+        }
+    }
+}
 
-        self.pc.on_peer_connection_state_change(Box::new({
-            move |state: RTCPeerConnectionState| {
-                handle_cleanup_on_disconnect(
-                    state,
-                    pc.clone(),
-                    cleanup_task_handle.clone(),
-                    cleanup_session_handler.clone(),
-                );
-                Box::pin(async {})
-            }
-        }));
+#[derive(Debug, Clone)]
+pub(crate) struct WeakPeerConnection {
+    pc: Weak<RTCPeerConnection>,
+}
+
+impl WeakPeerConnection {
+    pub fn upgrade(&self) -> Option<PeerConnection> {
+        self.pc.upgrade().map(|pc| PeerConnection { pc })
+    }
+}
+
+impl Drop for PeerConnection {
+    fn drop(&mut self) {
+        if let Ok(handle) = tokio::runtime::Handle::try_current()
+            && Arc::strong_count(&self.pc) == 1
+        {
+            let pc = self.pc.clone();
+            handle.spawn(async move { pc.close().await });
+        }
     }
 }
 
@@ -268,11 +283,13 @@ fn register_codecs(
     media_engine: &mut MediaEngine,
     video_encoder: Option<VideoEncoderOptions>,
     audio_encoder: Option<AudioEncoderOptions>,
+    offer: &RTCSessionDescription,
 ) -> Result<(), WhipWhepServerError> {
     if let Some(encoder) = video_encoder {
         match encoder {
             VideoEncoderOptions::FfmpegH264(_) | VideoEncoderOptions::VulkanH264(_) => {
-                for codec in h264_codec_params() {
+                let codecs = filter_h264_codecs_by_offer(offer, h264_codec_params());
+                for codec in codecs {
                     media_engine.register_codec(codec, RTPCodecType::Video)?;
                 }
             }
@@ -315,43 +332,6 @@ fn register_codecs(
         }
     }
     Ok(())
-}
-
-fn handle_cleanup_on_disconnect(
-    state: RTCPeerConnectionState,
-    pc: Arc<RTCPeerConnection>,
-    cleanup_task_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
-    remove_session_handler: OnCleanupSessionHdlr,
-) {
-    match state {
-        RTCPeerConnectionState::Connected => {
-            if let Ok(mut handle) = cleanup_task_handle.lock()
-                && let Some(task) = handle.take()
-            {
-                task.abort();
-            }
-        }
-        RTCPeerConnectionState::Failed | RTCPeerConnectionState::Disconnected => {
-            if let Ok(handle @ None) = cleanup_task_handle.lock().as_deref_mut() {
-                // schedule task only if none is pending, crucial in transitions failed <-> disconnected
-                let task = tokio::spawn(async move {
-                    sleep(Duration::from_secs(150)).await; // 2 min 30 s
-
-                    let current_state = pc.connection_state();
-                    if current_state != RTCPeerConnectionState::Connected
-                        && current_state != RTCPeerConnectionState::Connecting
-                        && current_state != RTCPeerConnectionState::Closed
-                    {
-                        remove_session_handler.call_handler().await;
-                    }
-                });
-                *handle = Some(task);
-            }
-        }
-        _ => {
-            // Other states aren't crucial for cleanup
-        }
-    }
 }
 
 fn create_opus_codec_params(

@@ -9,7 +9,10 @@ fn main() {
 
     use vk_video::{
         EncodedInputChunk,
-        parameters::{RateControl, VideoParameters},
+        parameters::{
+            RateControl, ScalingAlgorithm, TranscoderOutputConfig, VideoParameters,
+            VulkanAdapterDescriptor, VulkanDeviceDescriptor,
+        },
     };
 
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -19,7 +22,7 @@ fn main() {
     tracing::subscriber::set_global_default(subscriber).expect("Failed to initialize tracing");
 
     let args = std::env::args().collect::<Vec<_>>();
-    if args.len() != 4 {
+    if args.len() < 4 || args.len() > 5 {
         print_usage_and_exit(&args[0]);
     }
 
@@ -31,10 +34,23 @@ fn main() {
         print_usage_and_exit(&args[0]);
     };
 
+    let scaling_algorithm = if args.len() == 5 {
+        match args[4].as_str() {
+            "nearest" => ScalingAlgorithm::NearestNeighbor,
+            "bilinear" => ScalingAlgorithm::Bilinear,
+            "lanczos3" => ScalingAlgorithm::Lanczos3,
+            _ => print_usage_and_exit(&args[0]),
+        }
+    } else {
+        ScalingAlgorithm::default()
+    };
+
     let instance = vk_video::VulkanInstance::new().unwrap();
-    let adapter = instance.create_adapter(None).unwrap();
+    let adapter = instance
+        .create_adapter(&VulkanAdapterDescriptor::default())
+        .unwrap();
     let device = adapter
-        .create_device(Default::default(), Default::default(), Default::default())
+        .create_device(&VulkanDeviceDescriptor::default())
         .unwrap();
 
     let params = device
@@ -52,7 +68,12 @@ fn main() {
         )
         .unwrap();
 
-    let mut transcoder = device.create_transcoder(&[params]).unwrap();
+    let mut transcoder = device
+        .create_transcoder(&[TranscoderOutputConfig {
+            encoder_parameters: params,
+            scaling_algorithm,
+        }])
+        .unwrap();
 
     let mut input_file = File::open(input_file).unwrap();
     let mut output_file = File::create("output.h264").unwrap();
@@ -80,7 +101,7 @@ fn main() {
 
 #[cfg(vulkan)]
 fn print_usage_and_exit(executable_name: &str) -> ! {
-    eprintln!("usage: {executable_name} INPUT OUT_WIDTH OUT_HEIGHT");
+    eprintln!("usage: {executable_name} INPUT OUT_WIDTH OUT_HEIGHT [nearest|bilinear|lanczos3]");
     std::process::exit(1);
 }
 

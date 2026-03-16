@@ -5,16 +5,18 @@ use ash::vk;
 use crate::{
     DecoderError, EncodedInputChunk, EncodedOutputChunk, Frame, VulkanCommonError, VulkanDevice,
     VulkanEncoderError,
-    device::EncoderParameters,
+    parameters::TranscoderOutputConfig,
     parser::{
         decoder_instructions::{DecoderInstruction, compile_to_decoder_instructions},
         h264::H264Parser,
         reference_manager::ReferenceContext,
     },
-    vulkan_decoder::{DecodeResult, FrameSorter, ImageModifiers, VulkanDecoder},
+    vulkan_decoder::{
+        DecodeResult, FrameSorter, ImageModifiers, InFlightDecodeResources, VulkanDecoder,
+    },
     vulkan_encoder::{FullEncoderParameters, H264EncodeProfileInfo, VulkanEncoder},
     vulkan_transcoder::pipeline::{OutputConfig, ResizeSubmission, ResizingPipeline},
-    wrappers::{DecodeInputBuffer, SemaphoreWaitValue},
+    wrappers::{DecodeInputBuffer, DecodingQueryPool, SemaphoreWaitValue},
 };
 
 mod pipeline;
@@ -40,7 +42,9 @@ pub enum TranscoderError {
 pub(crate) struct ResizedImages {
     images: ResizeSubmission,
     decoder_wait_value: SemaphoreWaitValue,
+    decode_query_pool: Option<Arc<DecodingQueryPool>>,
     input_buffer: DecodeInputBuffer,
+    _in_flight_resources: InFlightDecodeResources,
 }
 
 pub struct Transcoder {
@@ -56,7 +60,7 @@ pub struct Transcoder {
 impl Transcoder {
     pub(crate) fn new(
         device: Arc<VulkanDevice>,
-        parameters: Vec<EncoderParameters>,
+        output_configs: Vec<TranscoderOutputConfig>,
     ) -> Result<Self, TranscoderError> {
         let decoder = VulkanDecoder::new(
             Arc::new(
@@ -69,7 +73,7 @@ impl Transcoder {
                 create_flags: vk::ImageCreateFlags::EXTENDED_USAGE
                     | vk::ImageCreateFlags::MUTABLE_FORMAT,
                 usage_flags: vk::ImageUsageFlags::STORAGE,
-                additional_queue_index: device.queues.wgpu.family_index,
+                additional_queue_index: device.queues.compute.family_index,
             },
         )
         .map_err(DecoderError::VulkanDecoderError)?;
@@ -78,10 +82,12 @@ impl Transcoder {
         let reference_ctx = ReferenceContext::default();
         let sorter = FrameSorter::new();
 
-        let parameters = parameters
+        let scaling_algorithms: Vec<_> =
+            output_configs.iter().map(|c| c.scaling_algorithm).collect();
+
+        let parameters = output_configs
             .iter()
-            .copied()
-            .map(|p| device.validate_and_fill_encoder_parameters(p))
+            .map(|c| device.validate_and_fill_encoder_parameters(c.encoder_parameters))
             .collect::<Result<Vec<_>, _>>()?;
 
         let encoders = parameters
@@ -90,8 +96,9 @@ impl Transcoder {
             .map(|p| VulkanEncoder::new(Arc::new(device.encoding_device()?), p))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let output_configs = output_configs(&parameters);
-        let pipeline = pipeline::ResizingPipeline::new(device.clone(), output_configs)?;
+        let pipeline_output_configs =
+            make_pipeline_output_configs(&parameters, &scaling_algorithms);
+        let pipeline = pipeline::ResizingPipeline::new(device.clone(), pipeline_output_configs)?;
 
         Ok(Self {
             decoder,
@@ -179,13 +186,18 @@ impl Transcoder {
                 .iter_mut()
                 .map(|e| &mut e.tracker)
                 .collect::<Vec<_>>();
-            let output = self.resizing_pipeline.run(&mut frame, &mut trackers)?;
+            let cropped_extent = frame.decode_result.frame.cropped_extent;
+            let output = self
+                .resizing_pipeline
+                .run(&mut frame, &mut trackers, cropped_extent)?;
 
             let sorted = self.sorter.put(DecodeResult {
                 frame: ResizedImages {
                     images: output,
                     decoder_wait_value: frame.semaphore_wait_value,
+                    decode_query_pool: frame.decode_query_pool,
                     input_buffer: frame.input_buffer,
+                    _in_flight_resources: frame.in_flight_resources,
                 },
                 metadata: frame.decode_result.metadata,
             });
@@ -243,25 +255,35 @@ impl Transcoder {
         self.decoder
             .tracker
             .mark_waited(resized_images.data.decoder_wait_value);
-        self.decoder
-            .free_input_buffer(resized_images.data.input_buffer);
+        resized_images.data.input_buffer.release_to_pool();
 
         self.resizing_pipeline
             .mark_command_buffers_completed(resized_images.data.decoder_wait_value);
         self.resizing_pipeline
             .free_submission(resized_images.data.images);
 
+        if let Some(query_pool) = resized_images.data.decode_query_pool {
+            query_pool
+                .check_results_blocking()
+                .map_err(DecoderError::VulkanDecoderError)?;
+        }
+
         Ok(results)
     }
 }
 
-fn output_configs(parameters: &[FullEncoderParameters]) -> Vec<OutputConfig> {
+fn make_pipeline_output_configs(
+    parameters: &[FullEncoderParameters],
+    scaling_algorithms: &[crate::parameters::ScalingAlgorithm],
+) -> Vec<OutputConfig> {
     parameters
         .iter()
-        .map(|p| OutputConfig {
+        .zip(scaling_algorithms.iter())
+        .map(|(p, &scaling)| OutputConfig {
             width: p.width.get(),
             height: p.height.get(),
             profile: H264EncodeProfileInfo::new_encode(p),
+            scaling_algorithm: scaling,
         })
         .collect()
 }

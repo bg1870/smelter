@@ -95,7 +95,7 @@ pub async fn stream_media_to_peer(
                         error!("{}", ErrorStack::new(&err).into_string());
                         break;
                     }
-                };
+                }
             }
             Ok(EncodedOutputEvent::VideoEOS) => info!("Received video EOS event on WHEP output"),
             Ok(EncodedOutputEvent::AudioEOS) => info!("Received audio EOS event on WHEP output"),

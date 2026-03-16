@@ -4,11 +4,15 @@
 
 ### 💥 Breaking changes
 - `EncoderParameters` has an extra field, which determines whether stream parameters are inlined in the output stream.
+- Changed adapter and device creation API
 
 ### ✨ New features
 - One-to-many transcoders via `VulkanDevice::create_transcoder`
+- Made `wgpu` dependency optional via `wgpu` feature (enabled by default)
+- Added helpers for NV12 <-> RGBA wgpu texture conversion
 
 ### 🐛 Bug fixes
+- Fix graphical bugs when the decoded bitstream switches to a lower resolution mid-stream
 
 ## [v0.2.1](https://github.com/software-mansion/smelter/releases/tag/vk-video%2Fv0.2.1)
 

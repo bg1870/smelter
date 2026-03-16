@@ -1,23 +1,21 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, atomic::AtomicBool},
-};
+use std::collections::HashMap;
 
 use tracing::{debug, warn};
 
 use crate::{
     RtmpConnectionError, RtmpEvent, RtmpMessageParseError,
-    amf0::Amf0Value,
+    amf0::AmfValue,
     error::RtmpStreamError,
     message::{
-        CONTROL_MESSAGE_STREAM_ID, CommandMessage, CommandMessageConnectSuccess,
-        CommandMessageCreateStreamSuccess, CommandMessageResultExt, RtmpMessage,
-        UserControlMessage,
+        AudioMessage, CONTROL_MESSAGE_STREAM_ID, CommandMessage, CommandMessageConnectSuccess,
+        CommandMessageCreateStreamSuccess, CommandMessageResultExt, DataMessage, RtmpMessage,
+        UserControlMessage, VideoMessage,
     },
     protocol::{
         byte_stream::RtmpByteStream, handshake::Handshake, message_stream::RtmpMessageStream,
     },
     transport::RtmpTransport,
+    utils::ShutdownCondition,
 };
 
 const CONNECT_TRANSACTION_ID: u32 = 1;
@@ -34,6 +32,7 @@ pub struct RtmpClientConfig {
 pub struct RtmpClient {
     state: RtmpClientState,
     stream_id: u32,
+    shutdown_condition: ShutdownCondition,
 }
 
 struct RtmpClientState {
@@ -47,14 +46,14 @@ struct RtmpClientState {
 
 impl RtmpClient {
     pub fn connect(config: RtmpClientConfig) -> Result<Self, RtmpConnectionError> {
-        let should_close = Arc::new(AtomicBool::new(false));
+        let shutdown_condition = ShutdownCondition::default();
 
         let transport = if config.use_tls {
             RtmpTransport::tls_client(&config.host, config.port)?
         } else {
             RtmpTransport::tcp_client(&config.host, config.port)?
         };
-        let mut socket = RtmpByteStream::new(transport, should_close);
+        let mut socket = RtmpByteStream::new(transport, shutdown_condition.clone());
 
         Handshake::perform_as_client(&mut socket)?;
         debug!("Handshake complete");
@@ -68,24 +67,67 @@ impl RtmpClient {
         let stream_id = state.negotiate_connection(&config.app, &config.stream_key)?;
         debug!("Negotiation complete");
 
-        Ok(Self { state, stream_id })
+        Ok(Self {
+            state,
+            stream_id,
+            shutdown_condition,
+        })
     }
 
     pub fn send<T>(&mut self, event: T) -> Result<(), RtmpStreamError>
     where
         RtmpEvent: From<T>,
     {
-        let event = RtmpEvent::from(event);
-        self.state.stream.write_msg(RtmpMessage::Event {
-            event,
-            stream_id: self.stream_id,
-        })?;
+        let event = match RtmpEvent::from(event) {
+            RtmpEvent::H264Data(data) => RtmpMessage::Video {
+                video: VideoMessage::H264Data(data),
+                stream_id: self.stream_id,
+            },
+            RtmpEvent::H264Config(config) => RtmpMessage::Video {
+                video: VideoMessage::H264Config(config),
+                stream_id: self.stream_id,
+            },
+            RtmpEvent::AacData(data) => RtmpMessage::Audio {
+                audio: AudioMessage::AacData(data),
+                stream_id: self.stream_id,
+            },
+            RtmpEvent::AacConfig(config) => RtmpMessage::Audio {
+                audio: AudioMessage::AacConfig(config),
+                stream_id: self.stream_id,
+            },
+            RtmpEvent::UnknownAudioData(audio) => RtmpMessage::Audio {
+                audio: AudioMessage::Unknown(audio),
+                stream_id: self.stream_id,
+            },
+            RtmpEvent::UnknownVideoData(video) => RtmpMessage::Video {
+                video: VideoMessage::Unknown(video),
+                stream_id: self.stream_id,
+            },
+            RtmpEvent::Metadata(metadata) => RtmpMessage::DataMessage {
+                data: DataMessage::OnMetaData(metadata),
+                stream_id: self.stream_id,
+            },
+        };
+        self.state.stream.write_msg(event)?;
 
         // try read any pending messages
         while let Some(msg) = self.state.stream.try_read_msg()? {
             self.state.default_msg_handler(msg)?;
         }
         Ok(())
+    }
+}
+
+impl Drop for RtmpClient {
+    fn drop(&mut self) {
+        let _ = self.state.stream.write_msg(RtmpMessage::CommandMessage {
+            msg: CommandMessage::DeleteStream {
+                transaction_id: 0,
+                stream_id: self.stream_id,
+            },
+            stream_id: CONTROL_MESSAGE_STREAM_ID,
+        });
+        self.shutdown_condition.mark_for_shutdown();
     }
 }
 
@@ -274,7 +316,7 @@ impl NegotiationProgress {
         }
     }
 
-    fn try_match_on_status(&self, msg: &RtmpMessage) -> Option<(Amf0Value, u32)> {
+    fn try_match_on_status(&self, msg: &RtmpMessage) -> Option<(AmfValue, u32)> {
         let NegotiationProgress::WaitingForOnStatus { stream_id } = self else {
             return None;
         };
@@ -300,13 +342,13 @@ fn send_connect(stream: &mut RtmpMessageStream, app: &str) -> Result<(), RtmpCon
             ("app", app.into()),
             ("flashVer", "FMS/3,0,1,123".into()),
             // True if proxy is being used
-            ("fpad", Amf0Value::Boolean(false)),
+            ("fpad", AmfValue::Boolean(false)),
             // TODO: add config option
-            ("audioCodecs", Amf0Value::Number(0x0FFF as f64)), // all RTMP supported
+            ("audioCodecs", AmfValue::Number(0x0FFF as f64)), // all RTMP supported
             // TODO: add config option
-            ("videoCodecs", Amf0Value::Number(0x00FF as f64)), // all RTMP supported
-            ("videoFunction", Amf0Value::Number(0.0)),
-            ("objectEncoding", Amf0Value::Number(0.0)), // TODO: add amf3
+            ("videoCodecs", AmfValue::Number(0x00FF as f64)), // all RTMP supported
+            ("videoFunction", AmfValue::Number(0.0)),
+            ("objectEncoding", AmfValue::Number(0.0)),
         ]
         .into_iter()
         .map(|(k, v)| (k.into(), v)),
@@ -327,7 +369,7 @@ fn send_create_stream(stream: &mut RtmpMessageStream) -> Result<(), RtmpConnecti
     stream.write_msg(RtmpMessage::CommandMessage {
         msg: CommandMessage::CreateStream {
             transaction_id: CREATE_STREAM_TRANSACTION_ID,
-            command_object: Amf0Value::Null,
+            command_object: AmfValue::Null,
         },
         stream_id: CONTROL_MESSAGE_STREAM_ID,
     })?;

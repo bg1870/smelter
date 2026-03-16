@@ -1,12 +1,12 @@
 use std::{ops::Deref, sync::Arc};
 
 use crate::{
-    amf0::Amf0Value,
+    amf0::AmfValue,
     message::{CommandMessage, RtmpMessage},
 };
 
 pub const WINDOW_ACK_SIZE: u32 = 2_500_000;
-pub const PEER_BANDWIDTH: u32 = 2_400_000;
+pub const PEER_BANDWIDTH: u32 = 2_500_000;
 
 pub(super) struct NegotiationResult {
     pub app: Arc<str>,
@@ -58,7 +58,7 @@ impl NegotiationProgress {
         };
 
         let app = match command_object.get("app") {
-            Some(Amf0Value::String(app)) => app,
+            Some(AmfValue::String(app)) => app,
             None | Some(_) => "",
         };
 

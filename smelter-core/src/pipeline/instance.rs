@@ -60,7 +60,7 @@ pub struct Pipeline {
 
     #[allow(dead_code)]
     // triggers cleanup on drop
-    rtmp_server: Option<Arc<Mutex<RtmpServer>>>,
+    rtmp_server: Option<RtmpServer>,
 }
 
 impl Pipeline {
@@ -103,6 +103,15 @@ impl Pipeline {
         register_pipeline_input(pipeline, input_id, queue_options, |ctx, input_id| {
             RawDataInput::new_input(ctx, input_id, raw_input_options)
         })
+    }
+
+    pub fn update_input(&self, input_id: &InputId, pause: Option<bool>) {
+        if let Some(pause) = pause {
+            match pause {
+                true => self.queue.pause_input(input_id),
+                false => self.queue.resume_input(input_id),
+            }
+        }
     }
 
     pub fn unregister_input(&mut self, input_id: &InputId) -> Result<(), UnregisterInputError> {
@@ -571,11 +580,9 @@ fn create_pipeline(opts: PipelineOptions) -> Result<Pipeline, InitPipelineError>
     let (stats_monitor, stats_sender) = StatsMonitor::new();
 
     let rtmp_state = match opts.rtmp_server {
-        PipelineRtmpServerOptions::Enable {
-            port,
-            tls_cert_file,
-            tls_key_file,
-        } => Some(RtmpPipelineState::new(port, tls_cert_file, tls_key_file)),
+        PipelineRtmpServerOptions::Enable { port, tls_config } => {
+            Some(RtmpPipelineState::new(port, tls_config))
+        }
         PipelineRtmpServerOptions::Disable => None,
     };
 

@@ -5,15 +5,15 @@ use std::{
 
 use axum::http::HeaderMap;
 use smelter_render::OutputId;
-use tracing::error;
-use uuid::Uuid;
+use tokio::sync::broadcast;
 
 use crate::pipeline::webrtc::{
     bearer_token::validate_token,
     error::WhipWhepServerError,
     whep_output::{
-        connection_state::{WhepOutputConnectionState, WhepOutputConnectionStateOptions},
-        peer_connection::PeerConnection,
+        peer_connection::{PeerConnection, WeakPeerConnection},
+        track_task_audio::WhepAudioTrackThreadHandle,
+        track_task_video::WhepVideoTrackThreadHandle,
     },
 };
 
@@ -61,17 +61,21 @@ impl WhepOutputsState {
         guard.insert(output_id.clone(), WhepOutputConnectionState::new(options));
     }
 
+    pub fn remove_output(&self, output_ref: &Ref<OutputId>) {
+        self.0.lock().unwrap().remove(output_ref);
+    }
+
     pub fn add_session(
         &self,
         output_ref: &Ref<OutputId>,
+        session_id: &Arc<str>,
         peer_connection: PeerConnection,
-    ) -> Result<Arc<str>, WhipWhepServerError> {
+    ) -> Result<(), WhipWhepServerError> {
         let mut guard = self.0.lock().unwrap();
         match guard.get_mut(output_ref) {
             Some(output) => {
-                let session_id: Arc<str> = Arc::from(Uuid::new_v4().to_string());
                 output.sessions.insert(session_id.clone(), peer_connection);
-                Ok(session_id)
+                Ok(())
             }
             None => Err(WhipWhepServerError::NotFound(format!(
                 "Output {output_ref} not found"
@@ -79,31 +83,22 @@ impl WhepOutputsState {
         }
     }
 
-    pub async fn remove_session(
+    pub fn remove_session(
         &self,
         output_ref: &Ref<OutputId>,
         session_id: &Arc<str>,
     ) -> Result<(), WhipWhepServerError> {
-        let peer_connection = {
-            let mut guard = self.0.lock().unwrap();
-            let Some(output) = guard.get_mut(output_ref) else {
-                return Err(WhipWhepServerError::NotFound(format!(
-                    "Output {output_ref} not found"
-                )));
-            };
-            let Some(pc) = output.sessions.remove(session_id) else {
-                return Err(WhipWhepServerError::NotFound(format!(
-                    "Session {session_id:?} not found for {output_ref:?}"
-                )));
-            };
-            pc
-        };
-
-        if let Err(e) = peer_connection.close().await {
-            return Err(WhipWhepServerError::InternalError(format!(
-                "Failed to close session {session_id:?}: {e}"
+        let mut guard = self.0.lock().unwrap();
+        let Some(output) = guard.get_mut(output_ref) else {
+            return Err(WhipWhepServerError::NotFound(format!(
+                "Output {output_ref} not found"
             )));
-        }
+        };
+        if output.sessions.remove(session_id).is_none() {
+            return Err(WhipWhepServerError::NotFound(format!(
+                "Session {session_id:?} not found for {output_ref:?}"
+            )));
+        };
 
         Ok(())
     }
@@ -112,11 +107,11 @@ impl WhepOutputsState {
         &self,
         output_ref: &Ref<OutputId>,
         session_id: &Arc<str>,
-    ) -> Result<PeerConnection, WhipWhepServerError> {
+    ) -> Result<WeakPeerConnection, WhipWhepServerError> {
         let guard = self.0.lock().unwrap();
         match guard.get(output_ref) {
             Some(output) => match output.sessions.get(session_id) {
-                Some(pc) => Ok(pc.clone()),
+                Some(pc) => Ok(pc.downgrade()),
                 None => Err(WhipWhepServerError::NotFound(format!(
                     "Session {session_id:?} not found for {output_ref:?}"
                 ))),
@@ -146,33 +141,44 @@ impl WhepOutputsState {
             None => Ok(()), // Bearer token not required, treat as validated
         }
     }
+}
 
-    // called on drop (when output is unregistered)
-    pub fn ensure_output_closed(&self, output_ref: &Ref<OutputId>) {
-        let output = {
-            let mut guard = self.0.lock().unwrap();
-            guard.remove(output_ref)
-        };
+#[derive(Debug, Clone)]
+pub(crate) struct WhepOutputConnectionStateOptions {
+    pub bearer_token: Option<Arc<str>>,
+    pub video_options: Option<WhepVideoConnectionOptions>,
+    pub audio_options: Option<WhepAudioConnectionOptions>,
+}
 
-        if let Some(output_state) = output {
-            let Some(handle) = tokio::runtime::Handle::try_current().ok() else {
-                // No Tokio runtime available (e.g. during pipeline reset).
-                // Peer connections will be cleaned up when dropped.
-                return;
-            };
-            for (session_id, pc) in output_state.sessions.into_iter() {
-                let output_ref = output_ref.clone();
-                handle.spawn(async move {
-                    if let Err(err) = pc.close().await {
-                        error!(
-                            ?output_ref,
-                            ?session_id,
-                            ?err,
-                            "Cannot close peer_connection for WHEP output"
-                        );
-                    }
-                });
-            }
+#[derive(Debug)]
+pub(crate) struct WhepOutputConnectionState {
+    pub bearer_token: Option<Arc<str>>,
+    pub sessions: HashMap<Arc<str>, PeerConnection>,
+    pub video_options: Option<WhepVideoConnectionOptions>,
+    pub audio_options: Option<WhepAudioConnectionOptions>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct WhepVideoConnectionOptions {
+    pub encoder: VideoEncoderOptions,
+    pub receiver: Arc<broadcast::Receiver<EncodedOutputEvent>>,
+    pub track_thread_handle: WhepVideoTrackThreadHandle,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct WhepAudioConnectionOptions {
+    pub encoder: AudioEncoderOptions,
+    pub receiver: Arc<broadcast::Receiver<EncodedOutputEvent>>,
+    pub track_thread_handle: WhepAudioTrackThreadHandle,
+}
+
+impl WhepOutputConnectionState {
+    pub fn new(options: WhepOutputConnectionStateOptions) -> Self {
+        WhepOutputConnectionState {
+            bearer_token: options.bearer_token,
+            sessions: HashMap::new(),
+            video_options: options.video_options,
+            audio_options: options.audio_options,
         }
     }
 }

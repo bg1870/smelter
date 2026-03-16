@@ -240,6 +240,7 @@ impl SingleBenchmarkPass {
                         bitrate: None,
                         preset: VulkanH264EncoderPreset::HighQuality,
                         keyframe_interval: KEYFRAME_INTERVAL,
+                        bitstream_format: H264BitstreamFormat::AnnexB,
                     })),
                 },
             },

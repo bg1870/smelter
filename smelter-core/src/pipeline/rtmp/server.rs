@@ -1,10 +1,6 @@
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::{sync::Arc, thread, time::Duration};
 
-use rtmp::{RtmpConnection, RtmpServer, ServerConfig, TlsConfig};
+use rtmp::{RtmpServer, RtmpServerConfig, RtmpServerConnection, TlsConfig};
 use smelter_render::error::ErrorStack;
 use tracing::{error, warn};
 
@@ -16,21 +12,15 @@ use crate::prelude::*;
 
 pub struct RtmpPipelineState {
     pub port: u16,
-    pub tls_cert_file: Option<Arc<str>>,
-    pub tls_key_file: Option<Arc<str>>,
+    pub tls_config: Option<TlsConfig>,
     pub inputs: RtmpInputsState,
 }
 
 impl RtmpPipelineState {
-    pub fn new(
-        port: u16,
-        tls_cert_file: Option<Arc<str>>,
-        tls_key_file: Option<Arc<str>>,
-    ) -> Arc<Self> {
+    pub fn new(port: u16, tls_config: Option<TlsConfig>) -> Arc<Self> {
         Arc::new(Self {
             port,
-            tls_cert_file,
-            tls_key_file,
+            tls_config,
             inputs: RtmpInputsState::default(),
         })
     }
@@ -39,23 +29,12 @@ impl RtmpPipelineState {
 pub fn spawn_rtmp_server(
     ctx: Arc<PipelineCtx>,
     state: &RtmpPipelineState,
-) -> Result<Arc<Mutex<RtmpServer>>, InitPipelineError> {
+) -> Result<RtmpServer, InitPipelineError> {
     let port = state.port;
     let inputs = state.inputs.clone();
+    let tls = state.tls_config.clone();
 
-    let tls = match (&state.tls_cert_file, &state.tls_key_file) {
-        (Some(cert_file), Some(key_file)) => Some(TlsConfig {
-            cert_file: cert_file.clone(),
-            key_file: key_file.clone(),
-        }),
-        _ => None,
-    };
-
-    let config = ServerConfig {
-        port,
-        tls,
-        client_timeout_secs: 30,
-    };
+    let config = RtmpServerConfig { port, tls };
 
     let on_connection = Box::new(move |conn| {
         if let Err(err) = handle_incoming_connection(ctx.clone(), inputs.clone(), conn) {
@@ -83,7 +62,7 @@ pub fn spawn_rtmp_server(
 fn handle_incoming_connection(
     ctx: Arc<PipelineCtx>,
     inputs: RtmpInputsState,
-    conn: RtmpConnection,
+    conn: RtmpServerConnection,
 ) -> Result<(), RtmpServerError> {
     let input_ref = inputs.find_by_app_stream_key(conn.app(), conn.stream_key())?;
     inputs.get_mut_with(&input_ref, |input| {

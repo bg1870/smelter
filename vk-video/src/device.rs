@@ -14,6 +14,7 @@ use crate::device::caps::{
 use crate::device::queues::{Queue, QueueIndex, Queues, VideoQueues};
 use crate::parameters::{
     EncoderContentFlags, EncoderTuningMode, EncoderUsageFlags, H264Profile, RateControl,
+    TranscoderOutputConfig,
 };
 use crate::parser::{h264::H264Parser, reference_manager::ReferenceContext};
 use crate::vulkan_decoder::{FrameSorter, ImageModifiers, VulkanDecoder};
@@ -21,11 +22,16 @@ use crate::vulkan_encoder::{FullEncoderParameters, VulkanEncoder};
 use crate::vulkan_transcoder::{Transcoder, TranscoderError};
 use crate::{
     BytesDecoder, BytesEncoder, DecoderError, RawFrameData, VulkanDecoderError, VulkanEncoderError,
-    VulkanInitError, VulkanInstance, WgpuTexturesDecoder, WgpuTexturesEncoder, wrappers::*,
+    VulkanInitError, VulkanInstance, wrappers::*,
 };
 
 pub(crate) mod caps;
 pub(crate) mod queues;
+
+#[cfg(feature = "wgpu")]
+mod wgpu_api;
+#[cfg(feature = "wgpu")]
+pub(crate) use wgpu_api::*;
 
 pub(crate) const REQUIRED_EXTENSIONS: &[&CStr] =
     &[vk::KHR_VIDEO_QUEUE_NAME, vk::KHR_VIDEO_MAINTENANCE1_NAME];
@@ -39,6 +45,20 @@ pub(crate) const ENCODE_EXTENSIONS: &[&CStr] = &[
     vk::KHR_VIDEO_ENCODE_QUEUE_NAME,
     vk::KHR_VIDEO_ENCODE_H264_NAME,
 ];
+
+/// Describes a [`VulkanDevice`].
+/// Used by [`VulkanAdapter::create_device`]
+#[derive(Default, Clone)]
+pub struct VulkanDeviceDescriptor {
+    #[cfg(feature = "wgpu")]
+    pub wgpu_features: wgpu::Features,
+
+    #[cfg(feature = "wgpu")]
+    pub wgpu_experimental_features: wgpu::ExperimentalFeatures,
+
+    #[cfg(feature = "wgpu")]
+    pub wgpu_limits: wgpu::Limits,
+}
 
 /// A fraction
 #[derive(Debug, Clone, Copy)]
@@ -133,9 +153,9 @@ pub struct EncoderParameters {
 /// Open connection to a coding-capable device. Also contains a [`wgpu::Device`], a [`wgpu::Queue`] and
 /// a [`wgpu::Adapter`].
 pub struct VulkanDevice {
-    pub(crate) wgpu_device: wgpu::Device,
-    pub(crate) wgpu_queue: wgpu::Queue,
-    pub(crate) wgpu_adapter: wgpu::Adapter,
+    #[cfg(feature = "wgpu")]
+    pub(crate) wgpu_ctx: WgpuContext,
+
     pub(crate) _physical_device: vk::PhysicalDevice,
     pub(crate) allocator: Arc<Allocator>,
     pub(crate) queues: Queues,
@@ -148,14 +168,35 @@ pub struct VulkanDevice {
 impl VulkanDevice {
     pub(crate) fn new(
         instance: &VulkanInstance,
-        wgpu_features: wgpu::Features,
-        wgpu_experimental_features: wgpu::ExperimentalFeatures,
-        wgpu_limits: wgpu::Limits,
         adapter: VulkanAdapter<'_>,
+        #[allow(unused)] descriptor: &VulkanDeviceDescriptor,
     ) -> Result<Self, VulkanInitError> {
+        let mut required_extensions = REQUIRED_EXTENSIONS
+            .iter()
+            .copied()
+            .chain(match adapter.supports_decoding() {
+                true => DECODE_EXTENSIONS.iter().copied(),
+                false => [].iter().copied(),
+            })
+            .chain(match adapter.supports_encoding() {
+                true => ENCODE_EXTENSIONS.iter().copied(),
+                false => [].iter().copied(),
+            })
+            .collect::<Vec<_>>();
+
+        #[cfg(feature = "wgpu")]
+        append_wgpu_device_extensions(&adapter, descriptor.wgpu_features, &mut required_extensions);
+
+        #[cfg(not(feature = "wgpu"))]
+        required_extensions.push(ash::khr::timeline_semaphore::NAME);
+
+        let required_extensions_as_ptrs = required_extensions
+            .iter()
+            .map(|e| e.as_ptr())
+            .collect::<Vec<_>>();
+
         let VulkanAdapter {
             physical_device,
-            wgpu_adapter,
             queue_indices,
             decode_capabilities,
             encode_capabilities,
@@ -163,39 +204,11 @@ impl VulkanDevice {
             ..
         } = adapter;
 
-        let wgpu_features = wgpu_features | wgpu::Features::TEXTURE_FORMAT_NV12;
-        let wgpu_extensions = wgpu_adapter
-            .adapter
-            .required_device_extensions(wgpu_features);
-
-        let required_extensions = REQUIRED_EXTENSIONS
-            .iter()
-            .copied()
-            .chain(wgpu_extensions)
-            .chain(match info.supports_decoding {
-                true => DECODE_EXTENSIONS.iter().copied(),
-                false => [].iter().copied(),
-            })
-            .chain(match info.supports_encoding {
-                true => ENCODE_EXTENSIONS.iter().copied(),
-                false => [].iter().copied(),
-            })
-            .collect::<Vec<_>>();
-
-        let required_extensions_as_ptrs = required_extensions
-            .iter()
-            .map(|e| e.as_ptr())
-            .collect::<Vec<_>>();
-
         let queue_create_infos = queue_indices.queue_create_infos();
         let queue_create_infos = queue_create_infos
             .iter()
             .map(|q| q.info)
             .collect::<Vec<_>>();
-
-        let mut wgpu_physical_device_features = wgpu_adapter
-            .adapter
-            .physical_device_features(&required_extensions, wgpu_features);
 
         let mut vk_synch_2_feature =
             vk::PhysicalDeviceSynchronization2Features::default().synchronization2(true);
@@ -209,11 +222,25 @@ impl VulkanDevice {
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&required_extensions_as_ptrs);
 
-        let device_create_info = wgpu_physical_device_features
-            .add_to_device_create(device_create_info)
+        let device_create_info = device_create_info
             .push_next(&mut vk_synch_2_feature)
             .push_next(&mut vk_video_maintenance1_feature)
             .push_next(&mut vk_descriptor_feature);
+
+        #[cfg(feature = "wgpu")]
+        let mut wgpu_physical_device_features = adapter
+            .wgpu_adapter
+            .adapter
+            .physical_device_features(&required_extensions, descriptor.wgpu_features);
+        #[cfg(feature = "wgpu")]
+        let device_create_info =
+            wgpu_physical_device_features.add_to_device_create(device_create_info);
+
+        #[cfg(not(feature = "wgpu"))]
+        let mut timeline_semaphore_feature =
+            vk::PhysicalDeviceTimelineSemaphoreFeatures::default().timeline_semaphore(true);
+        #[cfg(not(feature = "wgpu"))]
+        let device_create_info = device_create_info.push_next(&mut timeline_semaphore_feature);
 
         let device = unsafe {
             instance
@@ -260,30 +287,25 @@ impl VulkanDevice {
                         .collect::<Vec<_>>()
                 });
         let transfer_queue = queue_from_device(device.clone(), &queue_indices.transfer, 0);
+        let compute_queue =
+            if queue_indices.compute.family_index == queue_indices.transfer.family_index {
+                if queue_indices.transfer.queue_count > 1 {
+                    queue_from_device(device.clone(), &queue_indices.transfer, 1)
+                } else {
+                    transfer_queue.clone()
+                }
+            } else {
+                queue_from_device(device.clone(), &queue_indices.compute, 0)
+            };
         let wgpu_queue =
             queue_from_device(device.clone(), &queue_indices.graphics_transfer_compute, 0);
 
         let queues = Queues {
             transfer: transfer_queue,
+            compute: compute_queue,
             h264_decode: VideoQueues::new(h264_decode_queues.into_boxed_slice()).map(Arc::new),
             h264_encode: VideoQueues::new(h264_encode_queues.into_boxed_slice()).map(Arc::new),
             wgpu: wgpu_queue,
-        };
-
-        let device_clone = device.clone();
-
-        let wgpu_device = unsafe {
-            wgpu_adapter.adapter.device_from_raw(
-                device.device.clone(),
-                Some(Box::new(move || {
-                    drop(device_clone);
-                })),
-                &required_extensions,
-                wgpu_features,
-                &wgpu::MemoryHints::default(),
-                queue_indices.graphics_transfer_compute.family_index as u32,
-                0,
-            )?
         };
 
         let allocator = Arc::new(Allocator::new(
@@ -292,31 +314,25 @@ impl VulkanDevice {
             device.clone(),
         )?);
 
-        let wgpu_adapter = unsafe { instance.wgpu_instance.create_adapter_from_hal(wgpu_adapter) };
-        let (wgpu_device, wgpu_queue) = unsafe {
-            wgpu_adapter.create_device_from_hal(
-                wgpu_device,
-                &wgpu::DeviceDescriptor {
-                    label: Some("wgpu device created by the vulkan video decoder"),
-                    memory_hints: wgpu::MemoryHints::default(),
-                    required_limits: wgpu_limits,
-                    required_features: wgpu_features,
-                    trace: wgpu::Trace::Off,
-                    experimental_features: wgpu_experimental_features,
-                },
-            )?
-        };
+        #[cfg(feature = "wgpu")]
+        let wgpu_ctx = WgpuContext::new(
+            adapter.instance,
+            adapter.wgpu_adapter,
+            queue_indices.graphics_transfer_compute.family_index as u32,
+            descriptor,
+            device.clone(),
+            required_extensions,
+        )?;
 
         Ok(VulkanDevice {
+            #[cfg(feature = "wgpu")]
+            wgpu_ctx,
             _physical_device: physical_device,
             device,
             allocator,
             queues,
             native_decode_capabilities: decode_capabilities,
             native_encode_capabilities: encode_capabilities,
-            wgpu_device,
-            wgpu_queue,
-            wgpu_adapter,
             adapter_info: info,
         })
     }
@@ -339,32 +355,6 @@ impl VulkanDevice {
                 .profile(max_profile)
                 .cloned()
                 .ok_or(VulkanDecoderError::VulkanDecoderUnsupported)?,
-        })
-    }
-
-    pub fn create_wgpu_textures_decoder(
-        self: &Arc<Self>,
-        parameters: DecoderParameters,
-    ) -> Result<WgpuTexturesDecoder, DecoderError> {
-        let parser = H264Parser::default();
-        let reference_ctx = ReferenceContext::new(parameters.missed_frame_handling);
-
-        let vulkan_decoder = VulkanDecoder::new(
-            Arc::new(self.decoding_device()?),
-            parameters.usage_flags,
-            ImageModifiers {
-                additional_queue_index: self.queues.transfer.family_index,
-                create_flags: Default::default(),
-                usage_flags: Default::default(),
-            },
-        )?;
-        let frame_sorter = FrameSorter::<wgpu::Texture>::new();
-
-        Ok(WgpuTexturesDecoder {
-            parser,
-            reference_ctx,
-            vulkan_decoder,
-            frame_sorter,
         })
     }
 
@@ -395,24 +385,12 @@ impl VulkanDevice {
     }
 
     /// Create a single-input multiple-output transcoder.
-    /// Each item in `parameters` corresponds to one output.
+    /// Each item in `outputs` corresponds to one output.
     pub fn create_transcoder(
         self: &Arc<Self>,
-        parameters: &[EncoderParameters],
+        outputs: &[TranscoderOutputConfig],
     ) -> Result<Transcoder, TranscoderError> {
-        Transcoder::new(self.clone(), parameters.into())
-    }
-
-    pub fn wgpu_device(&self) -> wgpu::Device {
-        self.wgpu_device.clone()
-    }
-
-    pub fn wgpu_queue(&self) -> wgpu::Queue {
-        self.wgpu_queue.clone()
-    }
-
-    pub fn wgpu_adapter(&self) -> wgpu::Adapter {
-        self.wgpu_adapter.clone()
+        Transcoder::new(self.clone(), outputs.into())
     }
 
     pub(crate) fn encoding_device(self: &Arc<Self>) -> Result<EncodingDevice, VulkanEncoderError> {
@@ -438,29 +416,6 @@ impl VulkanDevice {
         let encoder = VulkanEncoder::new(Arc::new(self.encoding_device()?), parameters)?;
 
         Ok(BytesEncoder {
-            vulkan_encoder: encoder,
-        })
-    }
-
-    pub fn create_wgpu_textures_encoder(
-        self: &Arc<Self>,
-        parameters: EncoderParameters,
-    ) -> Result<WgpuTexturesEncoder, VulkanEncoderError> {
-        let parameters = self.validate_and_fill_encoder_parameters(parameters)?;
-        let encoding_device = EncodingDevice {
-            vulkan_device: self.clone(),
-            h264_encode_queues: self
-                .queues
-                .h264_encode
-                .clone()
-                .ok_or(VulkanEncoderError::VulkanEncoderUnsupported)?,
-            native_encode_capabilities: self
-                .native_encode_capabilities
-                .clone()
-                .ok_or(VulkanEncoderError::VulkanEncoderUnsupported)?,
-        };
-        let encoder = VulkanEncoder::new(Arc::new(encoding_device), parameters)?;
-        Ok(WgpuTexturesEncoder {
             vulkan_encoder: encoder,
         })
     }

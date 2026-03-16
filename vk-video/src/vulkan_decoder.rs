@@ -5,7 +5,6 @@ use ash::vk;
 use h264_reader::nal::{pps::PicParameterSet, sps::SeqParameterSet};
 use rustc_hash::FxHashMap;
 use session_resources::VideoSessionResources;
-use wgpu::hal::api::Vulkan as VkApi;
 
 use crate::{
     RawFrameData,
@@ -70,6 +69,7 @@ pub(crate) type DecoderTracker = Tracker<DecoderTrackerKind>;
 pub(crate) struct DecodeSubmissionImageInfo {
     pub(crate) image: Arc<Image>,
     pub(crate) layer: u32,
+    pub(crate) cropped_extent: vk::Extent2D,
 }
 
 pub(crate) struct DecodeResultMetadata {
@@ -84,11 +84,21 @@ pub(crate) struct DecodeResult<T> {
     pub(crate) metadata: DecodeResultMetadata,
 }
 
+/// Vulkan resources that must be kept alive while a decode submission is in flight.
+pub(crate) struct InFlightDecodeResources {
+    _video_session: Arc<VideoSession>,
+    _video_session_params: Arc<VideoSessionParameters>,
+    _dpb_image_with_view: Arc<ImageWithView>,
+    _dst_image_with_view: Option<Arc<ImageWithView>>,
+}
+
 pub(crate) struct DecodeSubmission<'borrow, 'decoder> {
     pub(crate) decode_result: DecodeResult<DecodeSubmissionImageInfo>,
     pub(crate) semaphore_wait_value: SemaphoreWaitValue,
     pub(crate) decoder: &'borrow mut VulkanDecoder<'decoder>,
     pub(crate) input_buffer: DecodeInputBuffer,
+    pub(crate) decode_query_pool: Option<Arc<DecodingQueryPool>>,
+    pub(crate) in_flight_resources: InFlightDecodeResources,
 }
 
 impl<'a, 'b> DecodeSubmission<'a, 'b> {
@@ -96,13 +106,14 @@ impl<'a, 'b> DecodeSubmission<'a, 'b> {
         let raw_frame_data = self.decoder.download_output(&self.decode_result.frame)?;
         let frame = RawFrameData {
             frame: raw_frame_data,
-            width: self.decode_result.frame.image.extent.width,
-            height: self.decode_result.frame.image.extent.height,
+            width: self.decode_result.frame.cropped_extent.width,
+            height: self.decode_result.frame.cropped_extent.height,
         };
 
         self.finish(frame)
     }
 
+    #[cfg(feature = "wgpu")]
     fn output_to_wgpu_texture(self) -> Result<DecodeResult<wgpu::Texture>, VulkanDecoderError> {
         let wgpu_texture = self
             .decoder
@@ -112,7 +123,11 @@ impl<'a, 'b> DecodeSubmission<'a, 'b> {
     }
 
     fn finish<T>(self, output: T) -> Result<DecodeResult<T>, VulkanDecoderError> {
-        self.decoder.free_input_buffer(self.input_buffer);
+        self.input_buffer.release_to_pool();
+
+        if let Some(query_pool) = self.decode_query_pool {
+            query_pool.check_results_blocking()?;
+        }
 
         Ok(DecodeResult {
             frame: output,
@@ -189,12 +204,6 @@ impl VulkanDecoder<'_> {
 }
 
 impl<'a> VulkanDecoder<'a> {
-    pub(crate) fn free_input_buffer(&mut self, buffer: DecodeInputBuffer) {
-        if let Some(session) = &mut self.video_session_resources {
-            session.decode_buffer_pool.free(buffer);
-        }
-    }
-
     pub fn decode_to_bytes(
         &mut self,
         decoder_instructions: &[DecoderInstruction],
@@ -209,6 +218,7 @@ impl<'a> VulkanDecoder<'a> {
         Ok(result)
     }
 
+    #[cfg(feature = "wgpu")]
     pub fn decode_to_wgpu_textures(
         &mut self,
         decoder_instructions: &[DecoderInstruction],
@@ -320,6 +330,12 @@ impl<'a> VulkanDecoder<'a> {
             .video_session_resources
             .as_mut()
             .ok_or(VulkanDecoderError::NoSession)?;
+
+        let cropped_extent = video_session_resources
+            .sps
+            .get(&decode_information.sps_id)
+            .ok_or(VulkanDecoderError::NoSession)?
+            .size()?;
 
         if is_idr {
             video_session_resources.ensure_session(
@@ -590,11 +606,26 @@ impl<'a> VulkanDecoder<'a> {
         self.reference_id_to_dpb_slot_index
             .insert(reference_id, new_reference_slot_index);
 
+        let in_flight_resources = InFlightDecodeResources {
+            _video_session: video_session_resources.video_session.clone(),
+            _video_session_params: video_session_resources
+                .parameters_manager
+                .parameters
+                .clone(),
+            _dpb_image_with_view: video_session_resources
+                .decoding_images
+                .dpb_image_with_view(),
+            _dst_image_with_view: video_session_resources
+                .decoding_images
+                .dst_image_with_view(),
+        };
+
         Ok(DecodeSubmission {
             decode_result: DecodeResult {
                 frame: DecodeSubmissionImageInfo {
                     image: target_image,
                     layer: target_layer as u32,
+                    cropped_extent,
                 },
                 metadata: DecodeResultMetadata {
                     pic_order_cnt: decode_information.picture_info.PicOrderCnt_for_decoding[0],
@@ -606,11 +637,14 @@ impl<'a> VulkanDecoder<'a> {
                 },
             },
             semaphore_wait_value,
-            decoder: self,
+            decode_query_pool: video_session_resources.decode_query_pool.clone(),
+            in_flight_resources,
             input_buffer: buffer,
+            decoder: self,
         })
     }
 
+    #[cfg(feature = "wgpu")]
     fn output_to_wgpu_texture(
         &mut self,
         decode_output: &DecodeSubmissionImageInfo,
@@ -618,12 +652,12 @@ impl<'a> VulkanDecoder<'a> {
         let wgpu_device = unsafe {
             self.decoding_device
                 .wgpu_device()
-                .as_hal::<VkApi>()
+                .as_hal::<wgpu::hal::vulkan::Api>()
                 .unwrap()
         };
         let copy_extent = vk::Extent3D {
-            width: decode_output.image.extent.width,
-            height: decode_output.image.extent.height,
+            width: decode_output.cropped_extent.width,
+            height: decode_output.cropped_extent.height,
             depth: 1,
         };
 
@@ -746,19 +780,6 @@ impl<'a> VulkanDecoder<'a> {
 
         self.tracker.wait_for(semaphore_wait_value, u64::MAX)?;
 
-        let result = self
-            .video_session_resources
-            .as_ref()
-            .and_then(|s| s.decode_query_pool.as_ref())
-            .map(|pool| pool.get_result_blocking());
-
-        if let Some(result) = result {
-            let result = result?;
-            if result.as_raw() < 0 {
-                return Err(VulkanDecoderError::DecodeOperationFailed(result));
-            }
-        }
-
         let image = Arc::new(image);
         let image_clone = image.clone();
 
@@ -791,8 +812,8 @@ impl<'a> VulkanDecoder<'a> {
 
         let wgpu_texture = unsafe {
             self.decoding_device
-                .wgpu_device
-                .create_texture_from_hal::<VkApi>(
+                .wgpu_device()
+                .create_texture_from_hal::<wgpu::hal::vulkan::Api>(
                     hal_texture,
                     &wgpu::TextureDescriptor {
                         label: Some("vulkan video output texture"),
@@ -820,21 +841,19 @@ impl<'a> VulkanDecoder<'a> {
         &mut self,
         decode_output: &DecodeSubmissionImageInfo,
     ) -> Result<Vec<u8>, VulkanDecoderError> {
-        let (mut dst_buffer, wait_value) = self.copy_image_to_buffer(
-            &decode_output.image,
-            decode_output.image.extent,
-            decode_output.layer,
-        )?;
+        let extent = vk::Extent3D {
+            width: decode_output.cropped_extent.width,
+            height: decode_output.cropped_extent.height,
+            depth: 1,
+        };
+        let (mut dst_buffer, wait_value) =
+            self.copy_image_to_buffer(&decode_output.image, extent, decode_output.layer)?;
 
         self.tracker.wait_for(wait_value, u64::MAX)?;
 
         let output = unsafe {
-            dst_buffer.download_data_from_buffer(
-                decode_output.image.extent.width as usize
-                    * decode_output.image.extent.height as usize
-                    * 3
-                    / 2,
-            )?
+            dst_buffer
+                .download_data_from_buffer(extent.width as usize * extent.height as usize * 3 / 2)?
         };
 
         Ok(output)

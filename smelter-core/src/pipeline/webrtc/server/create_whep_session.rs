@@ -5,15 +5,17 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, Response, StatusCode},
 };
-use tracing::trace;
+use tracing::debug;
+use uuid::Uuid;
+use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use crate::pipeline::webrtc::{
     WhipWhepServerState,
     error::WhipWhepServerError,
     handle_keyframe_requests::handle_keyframe_requests,
     whep_output::{
-        cleanup_session_handler::OnCleanupSessionHdlr,
         init_payloaders::{init_audio_payloader, init_video_payloader},
+        pc_state_change::ConnectionStateChangeHdlr,
         peer_connection::PeerConnection,
         stream_media_to_peer::{MediaStream, stream_media_to_peer},
     },
@@ -27,7 +29,8 @@ pub async fn handle_create_whep_session(
 ) -> Result<Response<Body>, WhipWhepServerError> {
     let endpoint_id = Arc::from(endpoint_id.clone());
     let output_ref = state.outputs.find_by_endpoint_id(&endpoint_id)?;
-    trace!("SDP offer: {}", offer);
+    let session_id: Arc<str> = Arc::from(Uuid::new_v4().to_string());
+    debug!("SDP offer: {}", offer);
 
     validate_sdp_content_type(&headers)?;
     let outputs = state.outputs;
@@ -55,7 +58,10 @@ pub async fn handle_create_whep_session(
         }
     })?;
 
-    let peer_connection = PeerConnection::new(&ctx, &video_encoder, &audio_encoder).await?;
+    let parsed_offer = RTCSessionDescription::offer(offer)?;
+
+    let peer_connection =
+        PeerConnection::new(&ctx, &video_encoder, &audio_encoder, &parsed_offer).await?;
 
     let (video_media_stream, video_sender) = match (&video_encoder, video_receiver) {
         (Some(encoder), Some(receiver)) => {
@@ -89,18 +95,19 @@ pub async fn handle_create_whep_session(
         _ => (None, None),
     };
 
+    let pc_state_hdlr = ConnectionStateChangeHdlr::new(&ctx, &output_ref, &session_id, &outputs);
+    peer_connection.on_connection_state_change(pc_state_hdlr);
+
     let sdp_answer = peer_connection
-        .negotiate_connection(offer, video_sender.clone(), audio_sender.clone())
+        .negotiate_connection(parsed_offer, video_sender.clone(), audio_sender.clone())
         .await?;
-    trace!("SDP answer: {}", sdp_answer.sdp);
+    debug!("SDP answer: {}", sdp_answer.sdp);
 
-    let session_id = outputs.add_session(&output_ref, peer_connection.clone())?;
+    if let (Some(sender), Some(keyframe_request_sender)) = (video_sender, keyframe_request_sender) {
+        handle_keyframe_requests(&ctx.clone(), sender, keyframe_request_sender);
+    }
 
-    peer_connection.on_peer_connection_cleanup(OnCleanupSessionHdlr::new(
-        &outputs,
-        &output_ref,
-        &session_id,
-    ));
+    outputs.add_session(&output_ref, &session_id, peer_connection)?;
 
     tokio::spawn(stream_media_to_peer(
         ctx.clone(),
@@ -108,10 +115,6 @@ pub async fn handle_create_whep_session(
         video_media_stream,
         audio_media_stream,
     ));
-
-    if let (Some(sender), Some(keyframe_request_sender)) = (video_sender, keyframe_request_sender) {
-        handle_keyframe_requests(&ctx.clone(), sender, keyframe_request_sender);
-    }
 
     let body = Body::from(sdp_answer.sdp.to_string());
     let response = Response::builder()

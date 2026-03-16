@@ -4,6 +4,7 @@ use ash::vk;
 
 use crate::{
     VulkanDevice,
+    parameters::ScalingAlgorithm,
     vulkan_decoder::{DecodeSubmission, DecoderTrackerWaitState},
     vulkan_encoder::{EncoderTracker, EncoderTrackerWaitState, H264EncodeProfileInfo},
     vulkan_transcoder::TranscoderError,
@@ -15,6 +16,32 @@ use crate::{
 
 const MAX_OUTPUTS: u32 = 8;
 const MAX_FRAMES_IN_FLIGHT: u32 = 16; // The max reorder in h264
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct PushConstants {
+    output_count: u32,
+    width: u32,
+    height: u32,
+    scaling_algorithm: [u32; MAX_OUTPUTS as usize],
+}
+
+impl PushConstants {
+    fn new(output_configs: &[OutputConfig], cropped_size: vk::Extent2D) -> Self {
+        let mut result = PushConstants {
+            output_count: output_configs.len() as u32,
+            width: cropped_size.width,
+            height: cropped_size.height,
+            scaling_algorithm: [0; _],
+        };
+
+        for (i, config) in output_configs.iter().enumerate() {
+            result.scaling_algorithm[i] = config.scaling_algorithm as u32;
+        }
+
+        result
+    }
+}
 
 pub(crate) struct ResizingImageBundle {
     pub(crate) image: Arc<Image>,
@@ -87,7 +114,7 @@ impl ImageHeap {
                     .as_ref()
                     .unwrap()
                     .family_index as u32,
-                self.device.queues.wgpu.family_index as u32,
+                self.device.queues.compute.family_index as u32,
             ];
             let create_info = vk::ImageCreateInfo::default()
                 .flags(vk::ImageCreateFlags::EXTENDED_USAGE | vk::ImageCreateFlags::MUTABLE_FORMAT)
@@ -129,6 +156,7 @@ pub(crate) struct OutputConfig {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) profile: H264EncodeProfileInfo<'static>,
+    pub(crate) scaling_algorithm: ScalingAlgorithm,
 }
 
 pub(crate) struct Descriptors {
@@ -270,7 +298,7 @@ impl ResizingPipeline {
             layout_output.set_layout,
         ];
         let push_constants = [vk::PushConstantRange::default()
-            .size(4)
+            .size(std::mem::size_of::<PushConstants>() as u32)
             .offset(0)
             .stage_flags(vk::ShaderStageFlags::COMPUTE)];
         let create_info = vk::PipelineLayoutCreateInfo::default()
@@ -282,25 +310,25 @@ impl ResizingPipeline {
             vec![layout_input.clone(), layout_output.clone()],
         )?);
 
-        let mut front = wgpu::naga::front::wgsl::Frontend::new();
+        let mut front = naga::front::wgsl::Frontend::new();
         let parsed = front.parse(include_str!("shader.wgsl")).unwrap();
-        let mut validator = wgpu::naga::valid::Validator::new(
-            wgpu::naga::valid::ValidationFlags::all(),
-            wgpu::naga::valid::Capabilities::all(),
+        let mut validator = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
         );
         validator
-            .subgroup_stages(wgpu::naga::valid::ShaderStages::COMPUTE)
-            .subgroup_operations(wgpu::naga::valid::SubgroupOperationSet::all());
+            .subgroup_stages(naga::valid::ShaderStages::COMPUTE)
+            .subgroup_operations(naga::valid::SubgroupOperationSet::all());
         let module_info = validator.validate(&parsed).unwrap();
-        let compiled = wgpu::naga::back::spv::write_vec(
+        let compiled = naga::back::spv::write_vec(
             &parsed,
             &module_info,
-            &wgpu::naga::back::spv::Options {
+            &naga::back::spv::Options {
                 lang_version: (1, 6),
                 ..Default::default()
             },
-            Some(&wgpu::naga::back::spv::PipelineOptions {
-                shader_stage: wgpu::naga::ShaderStage::Compute,
+            Some(&naga::back::spv::PipelineOptions {
+                shader_stage: naga::ShaderStage::Compute,
                 entry_point: "main".into(),
             }),
         )
@@ -326,7 +354,8 @@ impl ResizingPipeline {
             shader_module,
         )?;
 
-        let buffer_pool = CommandBufferPool::new(device.clone(), device.queues.wgpu.family_index)?;
+        let buffer_pool =
+            CommandBufferPool::new(device.clone(), device.queues.compute.family_index)?;
 
         Ok(Self {
             image_heap,
@@ -412,6 +441,7 @@ impl ResizingPipeline {
         &mut self,
         input_submission: &mut DecodeSubmission,
         encoder_trackers: &mut [&mut EncoderTracker],
+        input_cropped_extent: vk::Extent2D,
     ) -> Result<ResizeSubmission, TranscoderError> {
         let input = ResizingImageBundle::new(
             input_submission.decode_result.frame.image.clone(),
@@ -468,12 +498,14 @@ impl ResizingPipeline {
                 ],
                 &[],
             );
+
+            let push_constants = PushConstants::new(&self.image_heap.configs, input_cropped_extent);
             self.device.device.cmd_push_constants(
                 buffer.buffer(),
                 self.pipeline.layout.layout,
                 vk::ShaderStageFlags::COMPUTE,
                 0,
-                &(outputs.len() as u32).to_ne_bytes(),
+                bytemuck::bytes_of(&push_constants),
             );
             self.device
                 .device
@@ -523,7 +555,7 @@ impl ResizingPipeline {
 
         unsafe {
             self.device.device.queue_submit2(
-                *self.device.queues.wgpu.queue.lock().unwrap(),
+                *self.device.queues.compute.queue.lock().unwrap(),
                 &[submit_info],
                 vk::Fence::null(),
             )?;
