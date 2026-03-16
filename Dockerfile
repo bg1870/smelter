@@ -120,6 +120,9 @@ RUN cargo build --release 2>/dev/null || true
 # Copy full source code
 COPY . /build
 
+# Touch all source files so cargo detects changes over the dummy pre-build
+RUN find . -name "*.rs" -exec touch {} +
+
 # Build release binaries
 RUN cargo build --release --bin main_process --bin process_helper
 
